@@ -53,21 +53,43 @@ struct ContentView: View {
 
 ## Customization
 
-| Parameter   | Type    | Default   | Description                              |
-|-------------|---------|-----------|------------------------------------------|
-| `color1`    | `Color` | `.bpink`  | Top gradient stop (mixed with `color4`)  |
-| `color2`    | `Color` | `.bindigo`| Middle gradient stop                     |
-| `color3`    | `Color` | `.bgreen` | Bottom gradient stop                     |
-| `color4`    | `Color` | `.bindigo`| Color blended into `color1` at the top   |
-| `noise`     | `Float` | `15.25`   | Value-noise scale                        |
-| `strength`  | `Float` | `15.0`    | How strongly noise perturbs the ripple   |
+**Colors** are passed directly to the initializer (`color1`–`color4`, defaulting to the bubbld palette). **Everything else** lives on a `Configuration` value type — every field has a default, so you only set what you want to change:
 
 ```swift
 MetalShaderBackgroundView(
     color1: .bpink, color2: .bindigo, color3: .bgreen, color4: .bpink,
-    noise: 20, strength: 12
+    configuration: .init(noise: 20, rippleFrequency: 12, displacementStrength: 0.4)
 )
 ```
+
+### `Configuration`
+
+| Field                  | Type        | Default              | Description                                   |
+|------------------------|-------------|----------------------|-----------------------------------------------|
+| `noise`                | `Float`     | `15.25`              | Value-noise scale (finer grain when higher)   |
+| `strength`             | `Float`     | `15.0`               | How strongly noise perturbs the ripple phase  |
+| `rippleFrequency`      | `Float`     | `16.0`               | Number of wavefronts (tighter rings when higher) |
+| `rippleSpeed`          | `Float`     | `3.0`                | Ripple animation speed                        |
+| `displacementStrength` | `Float`     | `0.3`                | How much the ripple warps the image           |
+| `topColorMix`          | `Double`    | `0.8`                | Blend of `color4` into `color1` at the top    |
+| `startPoint`           | `UnitPoint` | `.top`               | Gradient start                                |
+| `endPoint`             | `UnitPoint` | `.bottomTrailing`    | Gradient end                                  |
+| `orbitRadius`          | `Double`    | `300`                | Radius of the orbiting ripple center          |
+| `orbitSpeed`           | `Double`    | `0.001`              | Orbit angular step per frame                  |
+| `scale`                | `CGFloat`   | `1.1`                | Layer scale (keeps displaced edges covered)   |
+| `maxSampleOffset`      | `CGSize`    | `300 × 500`          | Max offset the layer effect may sample        |
+
+### Presets
+
+```swift
+MetalShaderBackgroundView(configuration: .calm)     // slow, soft, subtle
+MetalShaderBackgroundView(configuration: .intense)  // fast, tight, bold
+MetalShaderBackgroundView(configuration: .default)  // the stock look
+```
+
+### Interactive playground
+
+Open the package in Xcode and run the **"Liquid Glass Playground"** preview in `MetalShaderBackgroundView.swift` to live-tune every `Configuration` knob (and the four colors) with sliders on a Liquid Glass panel. The playground requires iOS 26 / macOS 26; the component itself does not.
 
 ### Full control
 
@@ -76,7 +98,8 @@ Drive the animation yourself by supplying `time` and a timer publisher:
 ```swift
 MetalShaderBackgroundView(
     color1: .bpink, color2: .bindigo, color3: .bgreen, color4: .bpink,
-    time: myTime, noise: 15.25, strength: 15.0,
+    time: myTime,
+    configuration: .init(rippleSpeed: 4),
     timer: Timer.publish(every: 1 / 60, on: .main, in: .common).autoconnect()
 )
 ```
@@ -91,4 +114,4 @@ MIT © 2026 bubbld. See [LICENSE](LICENSE).
 
 ## Built by bubbld
 
-bubbld is a studio building flagship native SwiftUI & Metal experiences for Apple platforms. `BubbldMetal` is the first of our open-source components. Want something like this in your app? Reach us at [info@bubbld.app](mailto:info@bubbld.app).
+bubbld is a studio building flagship native SwiftUI & Metal experiences for Apple platforms. Want something like this in your app? Reach us at [info@bubbld.app](mailto:info@bubbld.app).
