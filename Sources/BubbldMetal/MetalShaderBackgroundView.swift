@@ -52,8 +52,8 @@ public struct MetalShaderBackgroundView: View {
         public var maxSampleOffset: CGSize
 
         public init(
-            noise: Float = 15.25,
-            strength: Float = 15.0,
+            noise: Float = 1.25,
+            strength: Float = 5.0,
             rippleFrequency: Float = 16.0,
             rippleSpeed: Float = 3.0,
             displacementStrength: Float = 0.3,
@@ -89,8 +89,8 @@ public struct MetalShaderBackgroundView: View {
         )
 
         /// Fast, tight, high-distortion — a bold hero background.
-        public static let intense = Configuration(
-            strength: 22, rippleFrequency: 22, rippleSpeed: 4.5,
+        public static let intense = Configuration(noise:5.24,
+            strength: 22, rippleFrequency: 22, rippleSpeed: 7.5,
             displacementStrength: 0.45, orbitSpeed: 0.0016
         )
     }
@@ -210,7 +210,7 @@ public struct MetalShaderBackgroundView: View {
             noise: 10,
             rippleFrequency: 2,
             displacementStrength: 0.4,
-            startPoint: .topLeading,
+            startPoint: .top,
             endPoint: .bottom
         )
     )

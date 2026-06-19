@@ -27,13 +27,13 @@
 **File ▸ Add Package Dependencies…** and enter:
 
 ```
-https://github.com/bubbld/BubbldMetal
+https://github.com/bubbld/bubbldMetal
 ```
 
 ### Package.swift
 
 ```swift
-.package(url: "https://github.com/bubbld/BubbldMetal", from: "1.0.0")
+.package(url: "https://github.com/bubbld/bubbldMetal", from: "1.0.0")
 ```
 
 …then add `"BubbldMetal"` to your target's dependencies.

@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "bubbld-web",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": ["-c", "cd /Users/jason/bubbldwebsite && npm run dev -- --port 4323"],
+      "port": 4323
+    }
+  ]
+}
