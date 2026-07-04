@@ -1,10 +1,13 @@
+
+
+https://github.com/user-attachments/assets/4c439c8e-588c-4f51-a9ed-4f55d1f3fb42
+
+
+
 # BubbldMetal
 
 > An animated, GPU-driven SwiftUI background powered by a stitchable Metal shader.
 > Built by **[bubbld](https://bubbld.app)** — a native SwiftUI & Metal component studio.
-
-![BubbldMetal demo](Docs/demo.gif)
-<!-- TODO: add a recording of the animated background -->
 
 ## Features
 
