@@ -144,7 +144,7 @@ public struct MetalShaderBackgroundView: View {
         public static let brushedMetal = Configuration(
             style: .brushedMetal,
             noise: 3, strength: 9, displacementStrength: 0.08, sheen: 0.55,
-            orbitSpeed: 0.0009
+            orbitSpeed: 0.0018
         )
 
         /// Soft drifting northern lights — the `.aurora` style, tuned.

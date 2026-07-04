@@ -145,7 +145,7 @@ static inline float m_fbm(float2 st) {
                               float rippleFrequency, float displacementStrength, float sheen) {
     float2 size = float2(boundingBox[2], boundingBox[3]);
     float2 uv = pos / size;
-    float t = time * 0.4;
+    float t = time * 0.8;
 
     // Interfering sine fields perturbed by fbm.
     float v = sin(uv.x * rippleFrequency + t)
