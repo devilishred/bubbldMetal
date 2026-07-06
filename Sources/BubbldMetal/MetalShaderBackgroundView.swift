@@ -16,7 +16,7 @@ public struct MetalShaderBackgroundView: View {
     /// Which `[[stitchable]]` Metal shader drives the background. Each case is a
     /// distinct look applied over the same gradient; `Configuration` knobs are
     /// reused across styles wherever they map naturally.
-    public enum BackgroundStyle: String, CaseIterable, Hashable, Sendable {
+    public enum BackgroundStyle: String, CaseIterable, Hashable, Sendable, Codable {
         /// Ripple + value-noise displacement — the original bubbld look (`fbp`).
         case ripple
         /// Domain-warped fbm with a sharp specular crest — chrome/mercury.
@@ -225,6 +225,16 @@ public struct MetalShaderBackgroundView: View {
 
     /// When set, the caller drives `time`; when `nil`, the view advances time itself.
     private var externalTime: Float?
+    /// When set, the view renders a single **deterministic** frame for this
+    /// phase — driving both the noise clock and the orbiting sample center from
+    /// the phase and the render size, with the internal timer disabled. This is
+    /// what lets the same background render identically in a live preview and in
+    /// an offscreen `ImageRenderer` (thumbnails, still/video export). Takes
+    /// precedence over `externalTime` and the internal clock when non-`nil`.
+    private var externalPhase: Double?
+    /// Design-space width the deterministic orbit is measured against, so a
+    /// small preview and a high-resolution export produce an identical frame.
+    private var phaseReferenceWidth: CGFloat = 360
     /// Animation clock — created internally, or supplied via `.timer(_:)`.
     private var timer: Publishers.Autoconnect<Timer.TimerPublisher>
 
@@ -258,6 +268,7 @@ public struct MetalShaderBackgroundView: View {
         self.color4 = .bindigo
         self.configuration = .preset(for: style)
         self.externalTime = nil
+        self.externalPhase = nil
         // 30 fps is plenty for a soft background and roughly halves GPU/CPU
         // cost vs. 60. Speed is wall-clock based (see body), so this only trades
         // smoothness, not animation pace. Supply a faster clock via `.timer(_:)`.
@@ -339,11 +350,25 @@ public struct MetalShaderBackgroundView: View {
     /// Supply a custom frame-tick publisher (e.g. a slower or display-linked timer).
     public func timer(_ value: Publishers.Autoconnect<Timer.TimerPublisher>) -> Self { with { $0.timer = value } }
 
+    /// Render a single **deterministic** frame for `phase`, driving both the
+    /// noise clock and the orbiting sample center from the phase and the render
+    /// size, with the internal timer disabled. The same phase yields the same
+    /// frame at any resolution, so a live preview and an offscreen
+    /// `ImageRenderer` capture (thumbnail, still, or per-frame video export)
+    /// agree exactly. Advance `phase` yourself to animate.
+    ///
+    /// - Parameters:
+    ///   - value: The animation phase (advance ~`1/60` per frame for 60fps).
+    ///   - referenceWidth: Design-space width the orbit radius is measured
+    ///     against, so previews and exports at different sizes coincide.
+    public func phase(_ value: Double, referenceWidth: CGFloat = 360) -> Self {
+        with { $0.externalPhase = value; $0.phaseReferenceWidth = referenceWidth }
+    }
+
     /// Builds the `Shader` for the currently-selected `style`, passing only the
     /// uniforms that style's `[[stitchable]]` function declares.
-    private var shader: Shader {
+    private func makeShader(dragp: CGPoint, t: Float) -> Shader {
         let lib = ShaderLibrary.bundle(Bundle.module)
-        let t = externalTime ?? time
         let c = configuration
         let common: [Shader.Argument] = [.boundingRect, .float2(dragp), .float(t)]
 
@@ -427,35 +452,63 @@ public struct MetalShaderBackgroundView: View {
     }
 
     public var body: some View {
-        effected
-            .onReceive(timer) { date in
-                // Pause on Reduce Motion or when the scene isn't active: skip
-                // every state mutation so SwiftUI re-issues no GPU frames (the
-                // effect only redraws when `time`/`dragp` change). This is the
-                // biggest real-world power/heat win — nothing renders off-screen.
-                guard scenePhase == .active, !reduceMotion else {
-                    lastTick = nil
-                    return
+        Group {
+            if let phase = externalPhase {
+                // Deterministic path: derive the noise clock and the orbiting
+                // center purely from `phase` and the render size — no timer, no
+                // @State mutation — so an offscreen `ImageRenderer` frame is
+                // identical to the live one at any resolution.
+                GeometryReader { geo in
+                    effected(dragp: phaseDragp(phase: phase, size: geo.size),
+                             t: Float(phase * 0.5))
+                        .frame(width: geo.size.width, height: geo.size.height)
                 }
-                // Advance by real elapsed time (clamped) so pace is constant at
-                // any frame rate and never lurches after a pause.
-                let dt = lastTick.map { min(date.timeIntervalSince($0), 1.0 / 15.0) } ?? (1.0 / 60.0)
-                lastTick = date
-                angle += configuration.orbitSpeed * 60.0 * dt
-                dragp = CGPoint(
-                    x: 5 + cos(angle) * configuration.orbitRadius,
-                    y: 5 + sin(angle) * configuration.orbitRadius
-                )
-                if externalTime == nil { time += Float(dt * 0.5) }
+            } else {
+                // Self-animating path: the internal (or supplied) clock advances
+                // `time`/`dragp` on each tick.
+                effected(dragp: dragp, t: externalTime ?? time)
+                    .onReceive(timer) { date in
+                        // Pause on Reduce Motion or when the scene isn't active:
+                        // skip every state mutation so SwiftUI re-issues no GPU
+                        // frames (the effect only redraws when `time`/`dragp`
+                        // change). This is the biggest real-world power/heat win.
+                        guard scenePhase == .active, !reduceMotion else {
+                            lastTick = nil
+                            return
+                        }
+                        // Advance by real elapsed time (clamped) so pace is
+                        // constant at any frame rate and never lurches after a pause.
+                        let dt = lastTick.map { min(date.timeIntervalSince($0), 1.0 / 15.0) } ?? (1.0 / 60.0)
+                        lastTick = date
+                        angle += configuration.orbitSpeed * 60.0 * dt
+                        dragp = CGPoint(
+                            x: 5 + cos(angle) * configuration.orbitRadius,
+                            y: 5 + sin(angle) * configuration.orbitRadius
+                        )
+                        if externalTime == nil { time += Float(dt * 0.5) }
+                    }
             }
-            .frame(maxHeight: .infinity)
-            .scaleEffect(configuration.scale)
-            .ignoresSafeArea()
+        }
+        .frame(maxHeight: .infinity)
+        .scaleEffect(configuration.scale)
+        .ignoresSafeArea()
+    }
+
+    /// The orbiting sample center for a given `phase`, in pixel space and
+    /// centered on the view. The radius scales with render size (against
+    /// `phaseReferenceWidth`) so preview and export frames coincide.
+    private func phaseDragp(phase: Double, size: CGSize) -> CGPoint {
+        let renderScale = Double(size.width / phaseReferenceWidth)
+        let orbitAngle = phase * configuration.orbitSpeed * 60
+        let radius = configuration.orbitRadius * renderScale
+        return CGPoint(x: Double(size.width) / 2 + cos(orbitAngle) * radius,
+                       y: Double(size.height) / 2 + sin(orbitAngle) * radius)
     }
 
     /// Applies the correct SwiftUI effect for the current style: `.colorEffect`
     /// for self-generating styles, `.layerEffect` for displacement styles.
-    @ViewBuilder private var effected: some View {
+    @ViewBuilder private func effected(dragp: CGPoint, t: Float) -> some View {
+        let shader = makeShader(dragp: dragp, t: t)
         if configuration.style.isColorEffect {
             gradient.colorEffect(shader)
         } else {
