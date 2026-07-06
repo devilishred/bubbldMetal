@@ -105,6 +105,11 @@ MetalShaderBackgroundView(.liquidMetal)
 | `.brushedMetal` | Brushed titanium with a rolling highlight              | `noise`, `strength`, `displacementStrength`, `sheen`   |
 | `.aurora`       | Soft drifting bands of light                           | `noise`, `strength`, `rippleFrequency`, `displacementStrength` |
 | `.plasma`       | Oil-slick iridescent plasma                            | `noise`, `strength`, `rippleFrequency`, `displacementStrength`, `sheen` |
+| `.clouds`       | Drifting fractal clouds through a 4-color palette      | `noise` (frequency), `strength` (warp), `rippleSpeed`, `color1`–`color4` |
+| `.smoke`        | Wispy ink tendrils (`color1` ink over `color2`)        | `noise` (frequency), `strength` (warp), `rippleSpeed`, `color1`, `color2` |
+| `.chrome`       | Warped-fbm liquid-metal reflection, tinted by `color1` | `noise` (frequency), `strength` (warp), `rippleSpeed`, `color1` |
+
+> `.clouds`, `.smoke`, and `.chrome` are self-generating `.colorEffect` styles: they synthesize color from noise and a palette rather than displacing the gradient, so their look is driven by the colors you pass, not `startPoint`/`endPoint`.
 
 The defaults behind the modifiers (the same fields exposed on the underlying `Configuration` value type, if you'd rather build one and pass it to `.configuration(_:)`):
 

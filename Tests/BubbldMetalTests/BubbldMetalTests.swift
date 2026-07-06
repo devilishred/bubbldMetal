@@ -47,7 +47,7 @@ final class BubbldMetalTests: XCTestCase {
     /// Every style has a stable raw value and a non-empty display name, and the
     /// per-style presets select the matching style.
     func testBackgroundStylesAndPresets() {
-        XCTAssertEqual(MetalShaderBackgroundView.BackgroundStyle.allCases.count, 5)
+        XCTAssertEqual(MetalShaderBackgroundView.BackgroundStyle.allCases.count, 8)
         for style in MetalShaderBackgroundView.BackgroundStyle.allCases {
             XCTAssertFalse(style.displayName.isEmpty)
         }
@@ -55,6 +55,15 @@ final class BubbldMetalTests: XCTestCase {
         XCTAssertEqual(MetalShaderBackgroundView.Configuration.brushedMetal.style, .brushedMetal)
         XCTAssertEqual(MetalShaderBackgroundView.Configuration.aurora.style, .aurora)
         XCTAssertEqual(MetalShaderBackgroundView.Configuration.plasma.style, .plasma)
+        XCTAssertEqual(MetalShaderBackgroundView.Configuration.clouds.style, .clouds)
+        XCTAssertEqual(MetalShaderBackgroundView.Configuration.smoke.style, .smoke)
+        XCTAssertEqual(MetalShaderBackgroundView.Configuration.chrome.style, .chrome)
+
+        // Clouds/smoke/chrome are self-generating color effects; the rest displace the gradient.
+        XCTAssertTrue(MetalShaderBackgroundView.BackgroundStyle.clouds.isColorEffect)
+        XCTAssertTrue(MetalShaderBackgroundView.BackgroundStyle.smoke.isColorEffect)
+        XCTAssertTrue(MetalShaderBackgroundView.BackgroundStyle.chrome.isColorEffect)
+        XCTAssertFalse(MetalShaderBackgroundView.BackgroundStyle.ripple.isColorEffect)
     }
 
     /// The view initializes with each background style, and each style's
@@ -75,7 +84,8 @@ final class BubbldMetalTests: XCTestCase {
             throw XCTSkip("No Metal device available on this machine.")
         }
         let library = try device.makeDefaultLibrary(bundle: .module)
-        for name in ["fbp", "liquidMetal", "brushedMetal", "aurora", "plasma"] {
+        for name in ["fbp", "liquidMetal", "brushedMetal", "aurora", "plasma",
+                     "fractalClouds", "inkSmoke", "liquidChrome"] {
             XCTAssertNotNil(library.makeFunction(name: name),
                             "Expected stitchable function `\(name)` in default.metallib")
         }

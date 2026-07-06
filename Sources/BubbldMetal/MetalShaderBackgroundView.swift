@@ -27,6 +27,12 @@ public struct MetalShaderBackgroundView: View {
         case aurora
         /// Interfering sine fields with thin-film iridescence — oil-slick foil.
         case plasma
+        /// Drifting fractal-noise clouds through a four-color palette.
+        case clouds
+        /// Wispy ink tendrils diffusing between two colors.
+        case smoke
+        /// Warped-fbm height field faked into a liquid-metal reflection.
+        case chrome
 
         /// Human-readable label for pickers and UI.
         public var displayName: String {
@@ -36,6 +42,19 @@ public struct MetalShaderBackgroundView: View {
             case .brushedMetal: return "Brushed Metal"
             case .aurora:       return "Aurora"
             case .plasma:       return "Plasma"
+            case .clouds:       return "Clouds"
+            case .smoke:        return "Smoke"
+            case .chrome:       return "Chrome"
+            }
+        }
+
+        /// Whether this style is a self-generating `.colorEffect` (synthesizes
+        /// its own color and ignores the gradient) rather than a `.layerEffect`
+        /// that displaces the gradient. Determines which SwiftUI modifier drives it.
+        public var isColorEffect: Bool {
+            switch self {
+            case .clouds, .smoke, .chrome: return true
+            default:                       return false
             }
         }
     }
@@ -143,8 +162,8 @@ public struct MetalShaderBackgroundView: View {
         /// Brushed titanium with a rolling highlight — the `.brushedMetal` style.
         public static let brushedMetal = Configuration(
             style: .brushedMetal,
-            noise: 3, strength: 9, displacementStrength: 0.08, sheen: 0.55,
-            orbitSpeed: 0.0018
+            noise: 5, strength: 9, displacementStrength: 0.08, sheen: 0.55,
+            orbitSpeed: 0.0218
         )
 
         /// Soft drifting northern lights — the `.aurora` style, tuned.
@@ -161,6 +180,22 @@ public struct MetalShaderBackgroundView: View {
             sheen: 0.5, orbitSpeed: 0.001
         )
 
+        /// Drifting fractal clouds — the `.clouds` style. `noise` = cloud
+        /// frequency, `strength` = domain-warp, `rippleSpeed` = drift speed.
+        public static let clouds = Configuration(
+            style: .clouds, noise: 3.25, strength: 5, rippleSpeed: 3
+        )
+
+        /// Wispy ink smoke — the `.smoke` style (`color1` ink over `color2` bg).
+        public static let smoke = Configuration(
+            style: .smoke, noise: 3.25, strength: 5, rippleSpeed: 3
+        )
+
+        /// Liquid chrome — the `.chrome` style, tinted by `color1`.
+        public static let chrome = Configuration(
+            style: .chrome, noise: 3.25, strength: 5, rippleSpeed: 3
+        )
+
         /// The tuned preset for a given style — what `MetalShaderBackgroundView(style)`
         /// starts from before any modifiers are applied.
         public static func preset(for style: BackgroundStyle) -> Configuration {
@@ -170,6 +205,9 @@ public struct MetalShaderBackgroundView: View {
             case .brushedMetal: return .brushedMetal
             case .aurora:       return .aurora
             case .plasma:       return .plasma
+            case .clouds:       return .clouds
+            case .smoke:        return .smoke
+            case .chrome:       return .chrome
             }
         }
     }
@@ -193,6 +231,14 @@ public struct MetalShaderBackgroundView: View {
     @State private var angle: Double = 0
     @State private var dragp: CGPoint = .zero
     @State private var time: Float = 0
+    /// Wall-clock timestamp of the previous tick, so animation speed is
+    /// independent of the timer's frame rate; `nil` while paused.
+    @State private var lastTick: Date?
+
+    /// Freeze the animation when the user has enabled Reduce Motion.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Stop issuing GPU frames when the scene is backgrounded or inactive.
+    @Environment(\.scenePhase) private var scenePhase
 
     /// Create a background for the given `style`, seeded with that style's tuned
     /// preset. Refine it with chained modifiers:
@@ -212,7 +258,10 @@ public struct MetalShaderBackgroundView: View {
         self.color4 = .bindigo
         self.configuration = .preset(for: style)
         self.externalTime = nil
-        self.timer = Timer.publish(every: 1.0 / 60.0, on: .main, in: .common).autoconnect()
+        // 30 fps is plenty for a soft background and roughly halves GPU/CPU
+        // cost vs. 60. Speed is wall-clock based (see body), so this only trades
+        // smoothness, not animation pace. Supply a faster clock via `.timer(_:)`.
+        self.timer = Timer.publish(every: 1.0 / 30.0, on: .main, in: .common).autoconnect()
     }
 
     // MARK: - Modifiers
@@ -333,11 +382,39 @@ public struct MetalShaderBackgroundView: View {
                 .float(c.rippleFrequency), .float(c.displacementStrength),
                 .float(c.sheen),
             ]
+
+        // Color-effect styles: no orbiting center; they take `time`, the
+        // noise frequency/warp/speed, and palette colors. The `strength` knob
+        // is scaled to a domain-warp amount (matching the original cardmonkey
+        // wiring) so the same knob reads sensibly across styles.
+        case .clouds:
+            function = lib.fractalClouds
+            arguments = [
+                .boundingRect, .float(t),
+                .float(c.noise), .float(c.strength * 0.15), .float(c.rippleSpeed),
+                .color(color1), .color(color2), .color(color3), .color(color4),
+            ]
+        case .smoke:
+            function = lib.inkSmoke
+            arguments = [
+                .boundingRect, .float(t),
+                .float(c.noise), .float(c.strength * 0.2), .float(c.rippleSpeed),
+                .color(color1), .color(color2),
+            ]
+        case .chrome:
+            function = lib.liquidChrome
+            arguments = [
+                .boundingRect, .float(t),
+                .float(c.noise), .float(c.strength * 0.2), .float(c.rippleSpeed),
+                .color(color1),
+            ]
         }
         return Shader(function: function, arguments: arguments)
     }
 
-    public var body: some View {
+    /// The base gradient the shader distorts (layer styles) or overwrites
+    /// (color-effect styles).
+    private var gradient: LinearGradient {
         LinearGradient(
             colors: [
                 color1.mix(with: color4, by: configuration.topColorMix),
@@ -347,18 +424,43 @@ public struct MetalShaderBackgroundView: View {
             startPoint: configuration.startPoint,
             endPoint: configuration.endPoint
         )
-        .layerEffect(shader, maxSampleOffset: configuration.maxSampleOffset)
-        .onReceive(timer) { _ in
-            angle += configuration.orbitSpeed
-            dragp = CGPoint(
-                x: 5 + cos(angle) * configuration.orbitRadius,
-                y: 5 + sin(angle) * configuration.orbitRadius
-            )
-            if externalTime == nil { time += 1.0 / 120.0 }
+    }
+
+    public var body: some View {
+        effected
+            .onReceive(timer) { date in
+                // Pause on Reduce Motion or when the scene isn't active: skip
+                // every state mutation so SwiftUI re-issues no GPU frames (the
+                // effect only redraws when `time`/`dragp` change). This is the
+                // biggest real-world power/heat win — nothing renders off-screen.
+                guard scenePhase == .active, !reduceMotion else {
+                    lastTick = nil
+                    return
+                }
+                // Advance by real elapsed time (clamped) so pace is constant at
+                // any frame rate and never lurches after a pause.
+                let dt = lastTick.map { min(date.timeIntervalSince($0), 1.0 / 15.0) } ?? (1.0 / 60.0)
+                lastTick = date
+                angle += configuration.orbitSpeed * 60.0 * dt
+                dragp = CGPoint(
+                    x: 5 + cos(angle) * configuration.orbitRadius,
+                    y: 5 + sin(angle) * configuration.orbitRadius
+                )
+                if externalTime == nil { time += Float(dt * 0.5) }
+            }
+            .frame(maxHeight: .infinity)
+            .scaleEffect(configuration.scale)
+            .ignoresSafeArea()
+    }
+
+    /// Applies the correct SwiftUI effect for the current style: `.colorEffect`
+    /// for self-generating styles, `.layerEffect` for displacement styles.
+    @ViewBuilder private var effected: some View {
+        if configuration.style.isColorEffect {
+            gradient.colorEffect(shader)
+        } else {
+            gradient.layerEffect(shader, maxSampleOffset: configuration.maxSampleOffset)
         }
-        .frame(maxHeight: .infinity)
-        .scaleEffect(configuration.scale)
-        .ignoresSafeArea()
     }
 }
 
@@ -389,6 +491,20 @@ public struct MetalShaderBackgroundView: View {
 
 #Preview("Plasma") {
     MetalShaderBackgroundView(.plasma)
+}
+
+#Preview("Clouds") {
+    MetalShaderBackgroundView(.clouds)
+}
+
+#Preview("Smoke") {
+    MetalShaderBackgroundView(.smoke)
+        .colors(.white, .black, .black, .white)
+}
+
+#Preview("Chrome") {
+    MetalShaderBackgroundView(.chrome)
+        .color1(.cyan)
 }
 
 #Preview("Custom Colors & Knobs") {
@@ -461,6 +577,9 @@ private struct PlaygroundView: View {
                 Button("Brushed") { config = .brushedMetal }
                 Button("Aurora") { config = .aurora }
                 Button("Plasma") { config = .plasma }
+                Button("Clouds") { config = .clouds }
+                Button("Smoke") { config = .smoke }
+                Button("Chrome") { config = .chrome }
             }
             .buttonStyle(.glass)
             .font(.caption.weight(.semibold))
