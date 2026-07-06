@@ -81,32 +81,6 @@ static inline float m_fbm(float2 st) {
 }
 
 
-// MARK: - Brushed metal sheen
-
-[[ stitchable ]] half4 brushedMetal(float2 pos, SwiftUI::Layer l, float4 boundingBox,
-                                    float2 dragp, float time,
-                                    float noise, float strength,
-                                    float displacementStrength, float sheen) {
-    float2 size = float2(boundingBox[2], boundingBox[3]);
-    float2 uv = pos / size;
-    float2 c = dragp / size;
-
-    // Anisotropic grain: noise stretched hard along X so it reads as brushing.
-    float grain  = m_noise(float2(uv.x * noise,       uv.y * noise * 60.0));
-    float grain2 = m_noise(float2(uv.x * noise * 2.0, uv.y * noise * 120.0));
-    float streak = grain * 0.7 + grain2 * 0.3;
-
-    float2 displaced = uv + float2(0.0, (streak - 0.5) * displacementStrength);
-    half4 color = l.sample(displaced * size);
-
-    // Specular band that tracks the orbiting center — a light rolling over the metal.
-    float sweep = 1.0 - saturate(abs(uv.y - c.y) * strength * 0.1);
-    float highlight = pow(sweep, 3.0) * (0.6 + streak * 0.8);
-    color.rgb = mix(color.rgb, half3(1.0), half(highlight * sheen));
-    return color;
-}
-
-
 // MARK: - Aurora waves
 
 [[ stitchable ]] half4 aurora(float2 pos, SwiftUI::Layer l, float4 boundingBox,

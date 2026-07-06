@@ -21,8 +21,6 @@ public struct MetalShaderBackgroundView: View {
         case ripple
         /// Domain-warped fbm with a sharp specular crest — chrome/mercury.
         case liquidMetal
-        /// Anisotropic grain with a moving specular sweep — brushed titanium.
-        case brushedMetal
         /// Soft drifting bands of light over the gradient.
         case aurora
         /// Interfering sine fields with thin-film iridescence — oil-slick foil.
@@ -39,7 +37,6 @@ public struct MetalShaderBackgroundView: View {
             switch self {
             case .ripple:       return "Ripple"
             case .liquidMetal:  return "Liquid Metal"
-            case .brushedMetal: return "Brushed Metal"
             case .aurora:       return "Aurora"
             case .plasma:       return "Plasma"
             case .clouds:       return "Clouds"
@@ -159,13 +156,6 @@ public struct MetalShaderBackgroundView: View {
             orbitSpeed: 0.0008
         )
 
-        /// Brushed titanium with a rolling highlight — the `.brushedMetal` style.
-        public static let brushedMetal = Configuration(
-            style: .brushedMetal,
-            noise: 5, strength: 9, displacementStrength: 0.08, sheen: 0.55,
-            orbitSpeed: 0.0218
-        )
-
         /// Soft drifting northern lights — the `.aurora` style, tuned.
         public static let aurora = Configuration(
             style: .aurora,
@@ -202,7 +192,6 @@ public struct MetalShaderBackgroundView: View {
             switch style {
             case .ripple:       return .default
             case .liquidMetal:  return .liquidMetal
-            case .brushedMetal: return .brushedMetal
             case .aurora:       return .aurora
             case .plasma:       return .plasma
             case .clouds:       return .clouds
@@ -388,12 +377,6 @@ public struct MetalShaderBackgroundView: View {
                 .float(c.noise), .float(c.strength),
                 .float(c.displacementStrength), .float(c.sheen),
             ]
-        case .brushedMetal:
-            function = lib.brushedMetal
-            arguments = common + [
-                .float(c.noise), .float(c.strength),
-                .float(c.displacementStrength), .float(c.sheen),
-            ]
         case .aurora:
             function = lib.aurora
             arguments = common + [
@@ -532,10 +515,6 @@ public struct MetalShaderBackgroundView: View {
     MetalShaderBackgroundView(.liquidMetal)
 }
 
-#Preview("Brushed Metal") {
-    MetalShaderBackgroundView(.brushedMetal)
-}
-
 #Preview("Aurora") {
     MetalShaderBackgroundView(.aurora)
         .color1(.bpink)
@@ -627,7 +606,6 @@ private struct PlaygroundView: View {
                 Button("Calm") { config = .calm }
                 Button("Intense") { config = .intense }
                 Button("Liquid") { config = .liquidMetal }
-                Button("Brushed") { config = .brushedMetal }
                 Button("Aurora") { config = .aurora }
                 Button("Plasma") { config = .plasma }
                 Button("Clouds") { config = .clouds }
