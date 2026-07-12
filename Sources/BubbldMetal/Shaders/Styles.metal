@@ -62,11 +62,17 @@ static inline float m_fbm(float2 st) {
     float2 size = float2(boundingBox[2], boundingBox[3]);
     float2 uv = pos / size;
     float2 c = dragp / size;
-    float t = time * 0.15;
+    // Liquid Metal has no speed slider (rippleSpeed is unused here), so this
+    // multiplier is its master flow rate. Raised from 0.15 → 0.5 for a more
+    // molten, churning feel; tune here if it reads too fast/slow.
+    float t = time * 0.5;
 
-    // Two-stage domain warp — the churning body of the metal.
-    float2 q = float2(m_fbm(uv * noise + t),
-                      m_fbm(uv * noise + float2(5.2, 1.3)));
+    // Two-stage domain warp — the churning body of the metal. Both warp axes
+    // now evolve over time (the second was static, which halved the sense of
+    // motion), and a slow directional drift makes the surface appear to flow.
+    float2 flow = float2(t * 0.15, -t * 0.06);
+    float2 q = float2(m_fbm(uv * noise + t + flow),
+                      m_fbm(uv * noise + float2(5.2, 1.3) - t * 0.8));
     float2 r = float2(m_fbm(uv * noise + strength * 0.1 * q + float2(1.7, 9.2) + t),
                       m_fbm(uv * noise + strength * 0.1 * q + float2(8.3, 2.8) - t));
     float h = m_fbm(uv * noise + strength * 0.1 * r + length(uv - c));
