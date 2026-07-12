@@ -62,7 +62,9 @@ float value_noise(float2 st) {
 
     float2 newpos = uv;
     newpos *= finalPattern * shading;
-    half4 color = l.sample(newpos * size);
+    // Clamp to the layer edge so displaced samples never read outside the
+    // gradient (out-of-bounds sampling returns transparent → black edge gaps).
+    half4 color = l.sample(clamp(newpos, 0.0, 1.0) * size);
 
     return color;
 }

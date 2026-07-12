@@ -72,7 +72,7 @@ static inline float m_fbm(float2 st) {
     float h = m_fbm(uv * noise + strength * 0.1 * r + length(uv - c));
 
     float2 displaced = uv + (r - 0.5) * displacementStrength;
-    half4 color = l.sample(displaced * size);
+    half4 color = l.sample(clamp(displaced, 0.0, 1.0) * size);
 
     // Metallic specular: a sharp highlight riding the crests of the height field.
     float spec = pow(saturate(h), 4.0);
@@ -95,7 +95,7 @@ static inline float m_fbm(float2 st) {
     float wave = sin(uv.x * rippleFrequency + t) * 0.05
                + (m_fbm(uv * noise + t * 0.2) - 0.5) * strength * 0.05;
     float2 displaced = uv + float2(0.0, wave) * displacementStrength;
-    half4 color = l.sample(displaced * size);
+    half4 color = l.sample(clamp(displaced, 0.0, 1.0) * size);
 
     // Three stacked, drifting bands of light.
     float glow = 0.0;
@@ -128,7 +128,7 @@ static inline float m_fbm(float2 st) {
             + (m_fbm(uv * noise + t * 0.2) - 0.5) * strength;
 
     float2 displaced = uv + float2(sin(v), cos(v)) * displacementStrength * 0.1;
-    half4 color = l.sample(displaced * size);
+    half4 color = l.sample(clamp(displaced, 0.0, 1.0) * size);
 
     // Thin-film iridescence: a phase-shifted cosine palette shimmering with v.
     half phase = half(v) * 0.15h;
