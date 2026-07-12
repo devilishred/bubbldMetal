@@ -115,8 +115,8 @@ The defaults behind the modifiers (the same fields exposed on the underlying `Co
 
 | Field                  | Default              |     | Field                  | Default              |
 |------------------------|----------------------|-----|------------------------|----------------------|
-| `noise`                | `1.25`               |     | `topColorMix`          | `0.8`                |
-| `strength`             | `5.0`                |     | `startPoint`           | `.top`               |
+| `noise`                | `15.25`              |     | `topColorMix`          | `0.8`                |
+| `strength`             | `15.0`               |     | `startPoint`           | `.top`               |
 | `rippleFrequency`      | `16.0`               |     | `endPoint`             | `.bottomTrailing`    |
 | `rippleSpeed`          | `3.0`                |     | `orbitRadius`          | `300`                |
 | `displacementStrength` | `0.3`                |     | `orbitSpeed`           | `0.001`              |

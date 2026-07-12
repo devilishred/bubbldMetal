@@ -104,8 +104,8 @@ public struct MetalShaderBackgroundView: View {
 
         public init(
             style: BackgroundStyle = .ripple,
-            noise: Float = 1.25,
-            strength: Float = 5.0,
+            noise: Float = 15.25,
+            strength: Float = 15.0,
             rippleFrequency: Float = 16.0,
             rippleSpeed: Float = 3.0,
             displacementStrength: Float = 0.3,
@@ -138,8 +138,10 @@ public struct MetalShaderBackgroundView: View {
         public static let `default` = Configuration()
 
         /// Slow, soft, low-distortion — good behind dense content.
+        /// `noise` is pinned low so this stays smooth regardless of the stock
+        /// ripple default.
         public static let calm = Configuration(
-            strength: 8, rippleFrequency: 10, rippleSpeed: 1.5,
+            noise: 1.25, strength: 8, rippleFrequency: 10, rippleSpeed: 1.5,
             displacementStrength: 0.2, orbitSpeed: 0.0006
         )
 

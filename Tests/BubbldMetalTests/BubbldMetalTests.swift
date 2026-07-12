@@ -36,6 +36,9 @@ final class BubbldMetalTests: XCTestCase {
     func testConfigurationDefaults() {
         let config = MetalShaderBackgroundView.Configuration.default
         XCTAssertEqual(config.style, .ripple)
+        // The stock ripple look: high noise scale gives the original squarish grain.
+        XCTAssertEqual(config.noise, 15.25)
+        XCTAssertEqual(config.strength, 15.0)
         XCTAssertEqual(config.rippleFrequency, 16.0)
         XCTAssertEqual(config.rippleSpeed, 3.0)
         XCTAssertEqual(config.displacementStrength, 0.3)
@@ -47,12 +50,11 @@ final class BubbldMetalTests: XCTestCase {
     /// Every style has a stable raw value and a non-empty display name, and the
     /// per-style presets select the matching style.
     func testBackgroundStylesAndPresets() {
-        XCTAssertEqual(MetalShaderBackgroundView.BackgroundStyle.allCases.count, 8)
+        XCTAssertEqual(MetalShaderBackgroundView.BackgroundStyle.allCases.count, 7)
         for style in MetalShaderBackgroundView.BackgroundStyle.allCases {
             XCTAssertFalse(style.displayName.isEmpty)
         }
         XCTAssertEqual(MetalShaderBackgroundView.Configuration.liquidMetal.style, .liquidMetal)
-        XCTAssertEqual(MetalShaderBackgroundView.Configuration.brushedMetal.style, .brushedMetal)
         XCTAssertEqual(MetalShaderBackgroundView.Configuration.aurora.style, .aurora)
         XCTAssertEqual(MetalShaderBackgroundView.Configuration.plasma.style, .plasma)
         XCTAssertEqual(MetalShaderBackgroundView.Configuration.clouds.style, .clouds)
@@ -84,7 +86,7 @@ final class BubbldMetalTests: XCTestCase {
             throw XCTSkip("No Metal device available on this machine.")
         }
         let library = try device.makeDefaultLibrary(bundle: .module)
-        for name in ["fbp", "liquidMetal", "brushedMetal", "aurora", "plasma",
+        for name in ["fbp", "liquidMetal", "aurora", "plasma",
                      "fractalClouds", "inkSmoke", "liquidChrome"] {
             XCTAssertNotNil(library.makeFunction(name: name),
                             "Expected stitchable function `\(name)` in default.metallib")
