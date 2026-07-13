@@ -79,21 +79,20 @@ static inline float m_fbm3(float2 st) {
                                    float displacementStrength, float sheen) {
     float2 size = float2(boundingBox[2], boundingBox[3]);
     float2 uv = pos / size;
-    float2 c = dragp / size;
-    // Liquid Metal has no speed slider (rippleSpeed is unused here), so this
-    // multiplier is its master flow rate. Raised from 0.15 → 0.5 for a more
-    // molten, churning feel; tune here if it reads too fast/slow.
+    // Master flow rate (no speed slider — rippleSpeed is unused here).
     float t = time * 0.5;
 
-    // Two-stage domain warp — the churning body of the metal. Both warp axes
-    // now evolve over time (the second was static, which halved the sense of
-    // motion), and a slow directional drift makes the surface appear to flow.
-    float2 flow = float2(t * 0.15, -t * 0.06);
-    float2 q = float2(m_fbm3(uv * noise + t + flow),
-                      m_fbm3(uv * noise + float2(5.2, 1.3) - t * 0.8));
-    float2 r = float2(m_fbm3(uv * noise + strength * 0.1 * q + float2(1.7, 9.2) + t),
-                      m_fbm3(uv * noise + strength * 0.1 * q + float2(8.3, 2.8) - t));
-    float h = m_fbm3(uv * noise + strength * 0.1 * r + length(uv - c));
+    // Coherent directional drift — like Clouds/Smoke — so the molten body flows
+    // smoothly in one direction instead of the old back-and-forth wobble. Every
+    // warp layer is advected by the SAME drift (no opposing +t/-t terms), and
+    // the specular height rides the flow too (no orbiting sample center, which
+    // was what swept the highlight jerkily across the screen).
+    float2 drift = float2(t * 0.12, t * 0.07);
+    float2 q = float2(m_fbm3(uv * noise + drift),
+                      m_fbm3(uv * noise + float2(5.2, 1.3) + drift));
+    float2 r = float2(m_fbm3(uv * noise + strength * 0.1 * q + float2(1.7, 9.2) + drift),
+                      m_fbm3(uv * noise + strength * 0.1 * q + float2(8.3, 2.8) + drift));
+    float h = m_fbm3(uv * noise + strength * 0.1 * r + drift);
 
     float2 displaced = uv + (r - 0.5) * displacementStrength;
     half4 color = l.sample(clamp(displaced, 0.0, 1.0) * size);
