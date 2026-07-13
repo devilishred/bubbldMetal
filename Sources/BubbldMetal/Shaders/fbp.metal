@@ -10,7 +10,10 @@
 using namespace metal;
 
 float random(float2 st) {
-    return fract(sin(dot(st.xy, float2(12.9898, 78.233))) * 43758.5453123);
+    // Sine-free hash (Dave Hoskins' hash12) — no transcendental per lookup.
+    float3 p3 = fract(float3(st.x, st.y, st.x) * 0.1031);
+    p3 += dot(p3, float3(p3.y, p3.z, p3.x) + 33.33);
+    return fract((p3.x + p3.y) * p3.z);
 }
 
 

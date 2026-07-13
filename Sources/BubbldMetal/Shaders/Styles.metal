@@ -21,7 +21,11 @@
 using namespace metal;
 
 static inline float m_random(float2 st) {
-    return fract(sin(dot(st.xy, float2(12.9898, 78.233))) * 43758.5453123);
+    // Sine-free hash (Dave Hoskins' hash12) — avoids a transcendental `sin`
+    // per octave, which is the dominant per-pixel cost of every fbm style.
+    float3 p3 = fract(float3(st.x, st.y, st.x) * 0.1031);
+    p3 += dot(p3, float3(p3.y, p3.z, p3.x) + 33.33);
+    return fract((p3.x + p3.y) * p3.z);
 }
 
 static inline float m_noise(float2 st) {
@@ -52,6 +56,20 @@ static inline float m_fbm(float2 st) {
     return value;
 }
 
+// Three-octave fBm for the most expensive styles (Liquid Metal, Aurora), which
+// evaluate fBm 4–5× per pixel. Two fewer octaves ≈ 40% less noise work with
+// little visible loss at full-screen background scale.
+static inline float m_fbm3(float2 st) {
+    float value = 0.0;
+    float amplitude = 0.5;
+    for (int i = 0; i < 3; i++) {
+        value += amplitude * m_noise(st);
+        st *= 2.0;
+        amplitude *= 0.5;
+    }
+    return value;
+}
+
 
 // MARK: - Liquid / molten metal
 
@@ -71,11 +89,11 @@ static inline float m_fbm(float2 st) {
     // now evolve over time (the second was static, which halved the sense of
     // motion), and a slow directional drift makes the surface appear to flow.
     float2 flow = float2(t * 0.15, -t * 0.06);
-    float2 q = float2(m_fbm(uv * noise + t + flow),
-                      m_fbm(uv * noise + float2(5.2, 1.3) - t * 0.8));
-    float2 r = float2(m_fbm(uv * noise + strength * 0.1 * q + float2(1.7, 9.2) + t),
-                      m_fbm(uv * noise + strength * 0.1 * q + float2(8.3, 2.8) - t));
-    float h = m_fbm(uv * noise + strength * 0.1 * r + length(uv - c));
+    float2 q = float2(m_fbm3(uv * noise + t + flow),
+                      m_fbm3(uv * noise + float2(5.2, 1.3) - t * 0.8));
+    float2 r = float2(m_fbm3(uv * noise + strength * 0.1 * q + float2(1.7, 9.2) + t),
+                      m_fbm3(uv * noise + strength * 0.1 * q + float2(8.3, 2.8) - t));
+    float h = m_fbm3(uv * noise + strength * 0.1 * r + length(uv - c));
 
     float2 displaced = uv + (r - 0.5) * displacementStrength;
     half4 color = l.sample(clamp(displaced, 0.0, 1.0) * size);
@@ -99,7 +117,7 @@ static inline float m_fbm(float2 st) {
 
     // Gently roll the whole gradient vertically.
     float wave = sin(uv.x * rippleFrequency + t) * 0.05
-               + (m_fbm(uv * noise + t * 0.2) - 0.5) * strength * 0.05;
+               + (m_fbm3(uv * noise + t * 0.2) - 0.5) * strength * 0.05;
     float2 displaced = uv + float2(0.0, wave) * displacementStrength;
     half4 color = l.sample(clamp(displaced, 0.0, 1.0) * size);
 
@@ -109,7 +127,7 @@ static inline float m_fbm(float2 st) {
         float fi = float(i);
         float center = 0.25 + fi * 0.25
                      + sin(uv.x * rippleFrequency * 0.4 + t + fi * 1.7) * 0.08
-                     + (m_fbm(uv * noise + fi * 3.1) - 0.5) * 0.15;
+                     + (m_fbm3(uv * noise + fi * 3.1) - 0.5) * 0.15;
         glow += smoothstep(0.08, 0.0, abs(uv.y - center));
     }
     color.rgb += half3(saturate(glow) * 0.5);
