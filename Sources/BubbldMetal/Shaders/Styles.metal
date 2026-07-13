@@ -82,20 +82,19 @@ static inline float m_fbm3(float2 st) {
     float2 uv = pos / size;
     // Flow rate is driven by `speed` (the Ripple Speed knob), like Clouds/Smoke.
     float t = time * max(speed, 0.05);
+    float2 q = uv * noise;
 
-    // Coherent directional drift — like Clouds/Smoke — so the molten body flows
-    // smoothly in one direction instead of the old back-and-forth wobble. Every
-    // warp layer is advected by the SAME drift (no opposing +t/-t terms), and
-    // the specular height rides the flow too (no orbiting sample center, which
-    // was what swept the highlight jerkily across the screen).
-    float2 drift = float2(t * 0.14, t * 0.085);
-    float2 q = float2(m_fbm3(uv * noise + drift),
-                      m_fbm3(uv * noise + float2(5.2, 1.3) + drift));
-    float2 r = float2(m_fbm3(uv * noise + strength * 0.1 * q + float2(1.7, 9.2) + drift),
-                      m_fbm3(uv * noise + strength * 0.1 * q + float2(8.3, 2.8) + drift));
-    float h = m_fbm3(uv * noise + strength * 0.1 * r + drift);
+    // Turbulent domain warp (warp-of-warp, à la Smoke): each layer evolves at a
+    // DIFFERENT rate and direction, so the field shears and churns organically
+    // instead of sliding in one rigid diagonal. This is what makes it read as
+    // molten rather than a translating texture.
+    float2 w1 = float2(m_fbm3(q + float2(0.0, t * 0.11)),
+                       m_fbm3(q + float2(3.1, 1.7) - t * 0.09));
+    float2 w2 = float2(m_fbm3(q + strength * 0.12 * w1 + float2(t * 0.13, 0.0)),
+                       m_fbm3(q + strength * 0.12 * w1 + float2(2.3, 5.9) - t * 0.06));
+    float h = m_fbm3(q + strength * 0.12 * w2);
 
-    float2 displaced = uv + (r - 0.5) * displacementStrength;
+    float2 displaced = uv + (w2 - 0.5) * displacementStrength;
     half4 color = l.sample(clamp(displaced, 0.0, 1.0) * size);
 
     // Metallic specular: a sharp highlight riding the crests of the height field.
