@@ -416,7 +416,7 @@ public struct MetalShaderBackgroundView: View {
             arguments = [
                 .boundingRect, .float(t),
                 .float(c.noise), .float(c.strength * 0.2), .float(c.rippleSpeed),
-                .color(color1),
+                .color(color1), .color(color2),
             ]
         }
         return Shader(function: function, arguments: arguments)

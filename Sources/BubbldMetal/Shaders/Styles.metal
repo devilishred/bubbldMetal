@@ -230,7 +230,7 @@ static inline float m_fbm3(float2 st) {
 // specular + sinusoidal "chrome" bands from the height, lightly tinted.
 [[ stitchable ]] half4 liquidChrome(float2 pos, half4 color, float4 boundingBox,
                                     float time, float frequency, float warp, float speed,
-                                    half4 tint) {
+                                    half4 highlight, half4 shadow) {
     float2 size = float2(boundingBox[2], boundingBox[3]);
     float2 uv = pos / size;
     float freq = max(frequency, 0.5);
@@ -254,6 +254,10 @@ static inline float m_fbm3(float2 st) {
     float bands = 0.5 + 0.5 * sin(h * 18.0 + t);
     float lum = clamp(0.15 + diff * 0.5 + bands * 0.35 + spec, 0.0, 1.0);
 
-    float3 chrome = mix(float3(lum), float3(lum) * float3(tint.rgb) * 1.3, 0.35);
-    return half4(half3(chrome), 1.0);
+    // Two-tone metal: shadows take Color 2, crests take Color 1 (by the faux-
+    // reflection luminance), so valleys are colored rather than black. A white
+    // specular glint on top keeps the chrome sheen.
+    float3 metal = mix(float3(shadow.rgb), float3(highlight.rgb), lum);
+    metal = mix(metal, float3(1.0), spec * 0.5);
+    return half4(half3(saturate(metal)), 1.0);
 }
