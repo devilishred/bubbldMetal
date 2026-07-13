@@ -76,18 +76,19 @@ static inline float m_fbm3(float2 st) {
 [[ stitchable ]] half4 liquidMetal(float2 pos, SwiftUI::Layer l, float4 boundingBox,
                                    float2 dragp, float time,
                                    float noise, float strength,
-                                   float displacementStrength, float sheen) {
+                                   float displacementStrength, float sheen,
+                                   float speed) {
     float2 size = float2(boundingBox[2], boundingBox[3]);
     float2 uv = pos / size;
-    // Master flow rate (no speed slider — rippleSpeed is unused here).
-    float t = time * 0.5;
+    // Flow rate is driven by `speed` (the Ripple Speed knob), like Clouds/Smoke.
+    float t = time * max(speed, 0.05);
 
     // Coherent directional drift — like Clouds/Smoke — so the molten body flows
     // smoothly in one direction instead of the old back-and-forth wobble. Every
     // warp layer is advected by the SAME drift (no opposing +t/-t terms), and
     // the specular height rides the flow too (no orbiting sample center, which
     // was what swept the highlight jerkily across the screen).
-    float2 drift = float2(t * 0.12, t * 0.07);
+    float2 drift = float2(t * 0.14, t * 0.085);
     float2 q = float2(m_fbm3(uv * noise + drift),
                       m_fbm3(uv * noise + float2(5.2, 1.3) + drift));
     float2 r = float2(m_fbm3(uv * noise + strength * 0.1 * q + float2(1.7, 9.2) + drift),

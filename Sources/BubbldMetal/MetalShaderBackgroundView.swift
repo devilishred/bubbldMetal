@@ -378,6 +378,7 @@ public struct MetalShaderBackgroundView: View {
             arguments = common + [
                 .float(c.noise), .float(c.strength),
                 .float(c.displacementStrength), .float(c.sheen),
+                .float(c.rippleSpeed),
             ]
         case .aurora:
             function = lib.aurora
