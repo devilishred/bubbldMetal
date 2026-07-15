@@ -215,17 +215,17 @@ static inline float m_edgeFalloff(float2 uv, float margin) {
     float2 uv = pos / size;
     float freq = max(frequency, 0.5);
     float2 q = uv * freq;
-    // Sleepy clouds: amble slowly across the sky. Smoke morphs via a fast
-    // warp-of-warp with a churn term; clouds deliberately do neither, which is
-    // what keeps the two styles from looking alike.
+    // Sleepy clouds: a slow overall drift plus gentle IN-PLACE billowing. Smoke
+    // boils via a fast warp-of-warp churn; clouds evolve their warp field slowly
+    // so puffs form and dissolve where they sit instead of translating rigidly.
     float t = time * speed * 0.35;
-    float2 drift = float2(t * 0.03, t * 0.012);
+    float2 drift = float2(t * 0.02, t * 0.008);
 
-    // A single gentle domain warp that only DRIFTS — no time-churn term — so the
-    // shapes hold together and slide rather than boil. Reduced warp keeps them
-    // rounded and blobby instead of wispy like smoke.
-    float2 w = float2(m_fbm(q + drift),
-                      m_fbm(q + drift + float2(5.2, 1.3)));
+    // Each warp component advances on its own slow clock in a different
+    // direction, so the field shears and morphs internally — the missing
+    // "movement inside" — while staying far calmer than smoke's churn.
+    float2 w = float2(m_fbm(q + drift + float2(0.0, t * 0.05)),
+                      m_fbm(q + drift + float2(5.2, 1.3) - t * 0.04));
     float density = m_fbm(q + warp * 0.6 * w + drift);
 
     // Puffy: a narrow band with a raised floor leaves calm open sky between
