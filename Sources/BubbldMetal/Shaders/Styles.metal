@@ -70,6 +70,33 @@ static inline float m_fbm3(float2 st) {
     return value;
 }
 
+// MARK: - Edge-safe sampling helpers
+//
+// The `.layerEffect` styles below warp the sample coordinate before reading the
+// gradient. When the warp pushes a coordinate outside [0,1] the layer has no
+// content there, which is what produced the two artifacts we kept chasing:
+//   • transparent "blank" gaps  — sampling past the edge returns nothing;
+//   • edge "smear" streaks       — a hard clamp pins to one border pixel and
+//                                  stretches its color inward.
+// The two helpers remove both at the source.
+
+// Fold a coordinate back into [0,1] by REFLECTION rather than clamping. A clamp
+// repeats a single edge pixel (the smear); a mirror continues the interior,
+// which is nearly invisible over a smooth gradient. Identity inside [0,1].
+static inline float2 m_reflectUV(float2 x) {
+    x = fmod(abs(x), 2.0);
+    return mix(x, 2.0 - x, step(1.0, x));
+}
+
+// Smoothly ramps to 0 within `margin` of every edge. Multiplying the
+// displacement by this vanishes the warp at the border, so the sample
+// coordinate simply never leaves the interior near the edges — where the
+// overshoot is most common — while the centre keeps the full effect.
+static inline float m_edgeFalloff(float2 uv, float margin) {
+    float2 f = smoothstep(0.0, margin, uv) * smoothstep(0.0, margin, 1.0 - uv);
+    return f.x * f.y;
+}
+
 
 // MARK: - Liquid / molten metal
 
@@ -94,8 +121,12 @@ static inline float m_fbm3(float2 st) {
                        m_fbm3(q + strength * 0.12 * w1 + float2(2.3, 5.9) - t * 0.06));
     float h = m_fbm3(q + strength * 0.12 * w2);
 
-    float2 displaced = uv + (w2 - 0.5) * displacementStrength;
-    half4 color = l.sample(clamp(displaced, 0.0, 1.0) * size);
+    // Fade the warp to zero at the borders, then reflect any residual overshoot
+    // — no clamp streaks, no transparent gaps. The specular below still runs to
+    // the edge, so only the geometric distortion eases off, not the metal look.
+    float fade = m_edgeFalloff(uv, 0.12);
+    float2 displaced = uv + (w2 - 0.5) * displacementStrength * fade;
+    half4 color = l.sample(m_reflectUV(displaced) * size);
 
     // Metallic specular: a sharp highlight riding the crests of the height field.
     float spec = pow(saturate(h), 4.0);
@@ -117,8 +148,9 @@ static inline float m_fbm3(float2 st) {
     // Gently roll the whole gradient vertically.
     float wave = sin(uv.x * rippleFrequency + t) * 0.05
                + (m_fbm3(uv * noise + t * 0.2) - 0.5) * strength * 0.05;
-    float2 displaced = uv + float2(0.0, wave) * displacementStrength;
-    half4 color = l.sample(clamp(displaced, 0.0, 1.0) * size);
+    float fade = m_edgeFalloff(uv, 0.12);
+    float2 displaced = uv + float2(0.0, wave) * displacementStrength * fade;
+    half4 color = l.sample(m_reflectUV(displaced) * size);
 
     // Three stacked, drifting bands of light.
     float glow = 0.0;
@@ -150,8 +182,9 @@ static inline float m_fbm3(float2 st) {
             + sin((uv.x + uv.y) * rippleFrequency * 0.7 + t * 1.3)
             + (m_fbm(uv * noise + t * 0.2) - 0.5) * strength;
 
-    float2 displaced = uv + float2(sin(v), cos(v)) * displacementStrength * 0.1;
-    half4 color = l.sample(clamp(displaced, 0.0, 1.0) * size);
+    float fade = m_edgeFalloff(uv, 0.12);
+    float2 displaced = uv + float2(sin(v), cos(v)) * displacementStrength * 0.1 * fade;
+    half4 color = l.sample(m_reflectUV(displaced) * size);
 
     // Thin-film iridescence: a phase-shifted cosine palette shimmering with v.
     half phase = half(v) * 0.15h;
