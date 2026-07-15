@@ -140,25 +140,30 @@ static inline float m_edgeFalloff(float2 uv, float margin) {
 [[ stitchable ]] half4 aurora(float2 pos, SwiftUI::Layer l, float4 boundingBox,
                               float2 dragp, float time,
                               float noise, float strength,
-                              float rippleFrequency, float displacementStrength) {
+                              float rippleFrequency, float displacementStrength,
+                              float speed) {
     float2 size = float2(boundingBox[2], boundingBox[3]);
     float2 uv = pos / size;
-    float t = time * 0.3;
+    // Drift is driven by `speed` (the Ripple Speed knob). It used to be a fixed
+    // `time * 0.3`, so the slider did nothing and the bands barely moved.
+    float t = time * max(speed, 0.05) * 0.15;
 
     // Gently roll the whole gradient vertically.
-    float wave = sin(uv.x * rippleFrequency + t) * 0.05
-               + (m_fbm3(uv * noise + t * 0.2) - 0.5) * strength * 0.05;
+    float wave = sin(uv.x * rippleFrequency + t) * 0.06
+               + (m_fbm3(uv * noise + float2(t * 0.5, 0.0)) - 0.5) * strength * 0.05;
     float fade = m_edgeFalloff(uv, 0.12);
     float2 displaced = uv + float2(0.0, wave) * displacementStrength * fade;
     half4 color = l.sample(m_reflectUV(displaced) * size);
 
-    // Three stacked, drifting bands of light.
+    // Three stacked bands of light that drift AND undulate over time — the fbm
+    // term now advances with `t`, so the curtains actually shift shape instead
+    // of sitting still.
     float glow = 0.0;
     for (int i = 0; i < 3; i++) {
         float fi = float(i);
         float center = 0.25 + fi * 0.25
-                     + sin(uv.x * rippleFrequency * 0.4 + t + fi * 1.7) * 0.08
-                     + (m_fbm3(uv * noise + fi * 3.1) - 0.5) * 0.15;
+                     + sin(uv.x * rippleFrequency * 0.4 + t + fi * 1.7) * 0.1
+                     + (m_fbm3(uv * noise + float2(t * 0.3, fi * 3.1)) - 0.5) * 0.2;
         glow += smoothstep(0.08, 0.0, abs(uv.y - center));
     }
     color.rgb += half3(saturate(glow) * 0.5);
@@ -210,15 +215,24 @@ static inline float m_edgeFalloff(float2 uv, float margin) {
     float2 uv = pos / size;
     float freq = max(frequency, 0.5);
     float2 q = uv * freq;
-    float t = time * speed;
-    float2 drift = float2(t * 0.08, t * 0.05);
+    // Sleepy clouds: amble slowly across the sky. Smoke morphs via a fast
+    // warp-of-warp with a churn term; clouds deliberately do neither, which is
+    // what keeps the two styles from looking alike.
+    float t = time * speed * 0.35;
+    float2 drift = float2(t * 0.03, t * 0.012);
 
-    // Warp the sample coordinates by another fbm for puffy shapes; the churn
-    // term (t * 0.15) evolves the field over time so it morphs, not just pans.
+    // A single gentle domain warp that only DRIFTS — no time-churn term — so the
+    // shapes hold together and slide rather than boil. Reduced warp keeps them
+    // rounded and blobby instead of wispy like smoke.
     float2 w = float2(m_fbm(q + drift),
-                      m_fbm(q + drift + float2(5.2, 1.3) + t * 0.15));
-    float density = m_fbm(q + warp * w + drift);
-    density = smoothstep(0.15, 0.95, density);
+                      m_fbm(q + drift + float2(5.2, 1.3)));
+    float density = m_fbm(q + warp * 0.6 * w + drift);
+
+    // Puffy: a narrow band with a raised floor leaves calm open sky between
+    // fuller clouds, and a second smoothstep rounds the tops into soft
+    // cauliflower rather than ragged edges.
+    density = smoothstep(0.42, 0.82, density);
+    density = density * density * (3.0 - 2.0 * density);
 
     // Four-stop palette across the cloud density.
     float3 col;

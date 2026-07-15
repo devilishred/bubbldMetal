@@ -161,8 +161,8 @@ public struct MetalShaderBackgroundView: View {
         /// Soft drifting northern lights — the `.aurora` style, tuned.
         public static let aurora = Configuration(
             style: .aurora,
-            noise: 2, strength: 6, rippleFrequency: 8, displacementStrength: 0.4,
-            orbitSpeed: 0.0006
+            noise: 2, strength: 6, rippleFrequency: 8, rippleSpeed: 5,
+            displacementStrength: 0.4, orbitSpeed: 0.0006
         )
 
         /// Oil-slick iridescent plasma — the `.plasma` style, tuned.
@@ -385,6 +385,7 @@ public struct MetalShaderBackgroundView: View {
             arguments = common + [
                 .float(c.noise), .float(c.strength),
                 .float(c.rippleFrequency), .float(c.displacementStrength),
+                .float(c.rippleSpeed),
             ]
         case .plasma:
             function = lib.plasma
