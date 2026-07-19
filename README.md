@@ -87,6 +87,7 @@ Every modifier returns a new `MetalShaderBackgroundView`, so order doesn't matte
 | `.orbitSpeed(_:)`            | `Double`          | Orbit angular step per frame                   |
 | `.scale(_:)`                 | `CGFloat`         | Layer scale (keeps displaced edges covered)    |
 | `.maxSampleOffset(_:)`       | `CGSize`          | Max offset the layer effect may sample         |
+| `.dither(cell:levels:mark:)` | see below         | Halftone / ordered-dither overlay (any style)  |
 | `.configuration(_:)`         | `Configuration`   | Replace the whole configuration in one shot    |
 | `.time(_:)` / `.timer(_:)`   | see below         | Caller-driven animation                        |
 
@@ -102,7 +103,6 @@ MetalShaderBackgroundView(.liquidMetal)
 |-----------------|--------------------------------------------------------|--------------------------------------------------------|
 | `.ripple`       | Original ripple + value-noise displacement (`fbp`)     | `noise`, `strength`, `rippleFrequency`, `rippleSpeed`, `displacementStrength` |
 | `.liquidMetal`  | Churning chrome/mercury (domain-warped fbm + specular) | `noise`, `strength`, `displacementStrength`, `sheen`   |
-| `.brushedMetal` | Brushed titanium with a rolling highlight              | `noise`, `strength`, `displacementStrength`, `sheen`   |
 | `.aurora`       | Soft drifting bands of light                           | `noise`, `strength`, `rippleFrequency`, `displacementStrength` |
 | `.plasma`       | Oil-slick iridescent plasma                            | `noise`, `strength`, `rippleFrequency`, `displacementStrength`, `sheen` |
 | `.clouds`       | Drifting fractal clouds through a 4-color palette      | `noise` (frequency), `strength` (warp), `rippleSpeed`, `color1`–`color4` |
@@ -110,6 +110,24 @@ MetalShaderBackgroundView(.liquidMetal)
 | `.chrome`       | Warped-fbm liquid-metal reflection, tinted by `color1` | `noise` (frequency), `strength` (warp), `rippleSpeed`, `color1` |
 
 > `.clouds`, `.smoke`, and `.chrome` are self-generating `.colorEffect` styles: they synthesize color from noise and a palette rather than displacing the gradient, so their look is driven by the colors you pass, not `startPoint`/`endPoint`.
+
+### Dither / halftone overlay
+
+`.dither(...)` layers a retro halftone / ordered-dither pass **on top of any style** (or a plain gradient): it pixelates the field into cells, quantizes each to `levels` steps per channel with a 4×4 Bayer matrix, and draws each cell with the chosen `mark`. It's a cheap post-process (a Bayer lookup + quantize per pixel), so it's lighter than the noise styles — and it inherits the underlying animation for free.
+
+```swift
+MetalShaderBackgroundView(.clouds)
+    .colors(.orange, .pink, .yellow, .white)
+    .dither(cell: 10, levels: 3)              // flat cells, dithered transitions
+```
+
+| Parameter | Default    | Description                                              |
+|-----------|------------|---------------------------------------------------------|
+| `cell`    | `8`        | Grid cell size in points — dot size / resolution        |
+| `levels`  | `4`        | Quantization steps per channel (lower = more posterized)|
+| `mark`    | `.square`  | Cell glyph: `.square`, `.dot` (halftone), or `.plus`    |
+
+`.dot` and `.plus` draw the quantized color as a glyph on a white ground, sized by cell darkness. Call `.noDither()` to remove it.
 
 The defaults behind the modifiers (the same fields exposed on the underlying `Configuration` value type, if you'd rather build one and pass it to `.configuration(_:)`):
 

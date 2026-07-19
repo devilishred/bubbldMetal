@@ -102,6 +102,48 @@ public struct MetalShaderBackgroundView: View {
         /// Maximum sample offset the layer effect may read from.
         public var maxSampleOffset: CGSize
 
+        // MARK: Dither post-process
+
+        /// Optional halftone / ordered-dither pass layered on top of the style
+        /// (or plain gradient). `nil` = off. Composes with every style.
+        public var dither: Dither?
+
+        /// A retro halftone / ordered-dither overlay: pixelate into `cellSize`
+        /// cells, quantize each to `levels` steps per channel with a 4x4 Bayer
+        /// matrix, and draw each cell with `mark`.
+        public struct Dither: Equatable, Sendable {
+            /// How each dithered cell is drawn.
+            public enum Mark: Int, Sendable, CaseIterable {
+                /// Fill the whole cell — flat blocks with dithered transitions.
+                case square = 0
+                /// Round halftone dot on a white ground; grows with darkness.
+                case dot = 1
+                /// Plus / cross glyph on a white ground.
+                case plus = 2
+
+                public var displayName: String {
+                    switch self {
+                    case .square: return "Square"
+                    case .dot:    return "Dot"
+                    case .plus:   return "Plus"
+                    }
+                }
+            }
+
+            /// Cell size in points — the grid resolution / dot size.
+            public var cellSize: Float
+            /// Quantization levels per channel. Lower = flatter, more posterized.
+            public var levels: Float
+            /// How each cell is drawn.
+            public var mark: Mark
+
+            public init(cellSize: Float = 8, levels: Float = 4, mark: Mark = .square) {
+                self.cellSize = cellSize
+                self.levels = levels
+                self.mark = mark
+            }
+        }
+
         public init(
             style: BackgroundStyle = .ripple,
             noise: Float = 15.25,
@@ -116,7 +158,8 @@ public struct MetalShaderBackgroundView: View {
             orbitRadius: Double = 300,
             orbitSpeed: Double = 0.001,
             scale: CGFloat = 1.1,
-            maxSampleOffset: CGSize = CGSize(width: 300, height: 500)
+            maxSampleOffset: CGSize = CGSize(width: 300, height: 500),
+            dither: Dither? = nil
         ) {
             self.style = style
             self.noise = noise
@@ -132,6 +175,7 @@ public struct MetalShaderBackgroundView: View {
             self.orbitSpeed = orbitSpeed
             self.scale = scale
             self.maxSampleOffset = maxSampleOffset
+            self.dither = dither
         }
 
         /// The stock bubbld look.
@@ -333,6 +377,35 @@ public struct MetalShaderBackgroundView: View {
     /// Maximum sample offset the layer effect may read from.
     public func maxSampleOffset(_ value: CGSize) -> Self { with { $0.configuration.maxSampleOffset = value } }
 
+    // Dither / halftone post-process
+
+    /// Overlay a retro halftone / ordered-dither pass on top of the current
+    /// style. Composes with every style and with a plain gradient.
+    ///
+    /// ```swift
+    /// MetalShaderBackgroundView(.clouds).dither(cell: 8, levels: 4)
+    /// ```
+    ///
+    /// - Parameters:
+    ///   - cell: Grid cell size in points (dot size).
+    ///   - levels: Quantization steps per channel — lower is more posterized.
+    ///   - mark: How each cell is drawn (`.square`, `.dot`, `.plus`).
+    public func dither(
+        cell: Float = 8,
+        levels: Float = 4,
+        mark: Configuration.Dither.Mark = .square
+    ) -> Self {
+        with { $0.configuration.dither = .init(cellSize: cell, levels: levels, mark: mark) }
+    }
+
+    /// Overlay the halftone / dither pass from a prebuilt `Dither` value.
+    public func dither(_ options: Configuration.Dither) -> Self {
+        with { $0.configuration.dither = options }
+    }
+
+    /// Remove the dither overlay if one was set.
+    public func noDither() -> Self { with { $0.configuration.dither = nil } }
+
     // Full control (caller-driven animation)
 
     /// Drive the animation clock yourself. Pass the current `time`; combine with
@@ -492,15 +565,38 @@ public struct MetalShaderBackgroundView: View {
                        y: Double(size.height) / 2 + sin(orbitAngle) * radius)
     }
 
-    /// Applies the correct SwiftUI effect for the current style: `.colorEffect`
-    /// for self-generating styles, `.layerEffect` for displacement styles.
+    /// Applies the correct SwiftUI effect for the current style (`.colorEffect`
+    /// for self-generating styles, `.layerEffect` for displacement styles),
+    /// then layers the optional halftone/dither pass on top.
     @ViewBuilder private func effected(dragp: CGPoint, t: Float) -> some View {
         let shader = makeShader(dragp: dragp, t: t)
-        if configuration.style.isColorEffect {
-            gradient.colorEffect(shader)
-        } else {
-            gradient.layerEffect(shader, maxSampleOffset: configuration.maxSampleOffset)
+        let styled = Group {
+            if configuration.style.isColorEffect {
+                gradient.colorEffect(shader)
+            } else {
+                gradient.layerEffect(shader, maxSampleOffset: configuration.maxSampleOffset)
+            }
         }
+        if let d = configuration.dither {
+            // The dither samples the composited field within one cell, so the
+            // sample offset only needs to cover a cell.
+            styled.layerEffect(
+                ditherShader(d),
+                maxSampleOffset: CGSize(width: CGFloat(d.cellSize), height: CGFloat(d.cellSize))
+            )
+        } else {
+            styled
+        }
+    }
+
+    /// Builds the halftone/ordered-dither post-process shader.
+    private func ditherShader(_ d: Configuration.Dither) -> Shader {
+        ShaderLibrary.bundle(Bundle.module).halftoneDither(
+            .boundingRect,
+            .float(d.cellSize),
+            .float(d.levels),
+            .float(Float(d.mark.rawValue))
+        )
     }
 }
 
@@ -553,6 +649,23 @@ public struct MetalShaderBackgroundView: View {
         .endPoint(.bottom)
 }
 
+#Preview("Dither · Clouds (square)") {
+    MetalShaderBackgroundView(.clouds)
+        .colors(.orange, .pink, .yellow, .white)
+        .dither(cell: 10, levels: 3)
+}
+
+#Preview("Dither · Ripple (dot)") {
+    MetalShaderBackgroundView(.ripple)
+        .colors(.bpink, .bindigo, .bgreen, .bpink)
+        .dither(cell: 12, levels: 4, mark: .dot)
+}
+
+#Preview("Dither · Plasma (plus)") {
+    MetalShaderBackgroundView(.plasma)
+        .dither(cell: 12, levels: 4, mark: .plus)
+}
+
 // MARK: - Interactive playground (Liquid Glass)
 
 /// A live editor for every `Configuration` knob, floating in a Liquid Glass
@@ -593,6 +706,8 @@ private struct PlaygroundView: View {
                         GlassSliderRow(title: "Orbit Radius", value: $config.orbitRadius, range: 0...600)
                         GlassSliderRow(title: "Orbit Speed", value: $config.orbitSpeed, range: 0...0.01)
                         GlassSliderRow(title: "Scale", value: $config.scale, range: 1...1.5)
+
+                        dither
                     }
                     .padding(20)
                 }
@@ -638,6 +753,36 @@ private struct PlaygroundView: View {
             ColorPicker("3", selection: $color3).labelsHidden()
             ColorPicker("4", selection: $color4).labelsHidden()
             Spacer()
+        }
+    }
+
+    private var dither: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Toggle("Dither", isOn: Binding(
+                get: { config.dither != nil },
+                set: { config.dither = $0 ? (config.dither ?? .init()) : nil }
+            ))
+            .font(.caption.weight(.semibold))
+
+            if config.dither != nil {
+                GlassSliderRow(title: "Cell", value: Binding(
+                    get: { config.dither?.cellSize ?? 8 },
+                    set: { var d = config.dither ?? .init(); d.cellSize = $0; config.dither = d }
+                ), range: 2...40)
+                GlassSliderRow(title: "Levels", value: Binding(
+                    get: { config.dither?.levels ?? 4 },
+                    set: { var d = config.dither ?? .init(); d.levels = $0; config.dither = d }
+                ), range: 2...8)
+                Picker("Mark", selection: Binding(
+                    get: { config.dither?.mark ?? .square },
+                    set: { var d = config.dither ?? .init(); d.mark = $0; config.dither = d }
+                )) {
+                    ForEach(MetalShaderBackgroundView.Configuration.Dither.Mark.allCases, id: \.self) { m in
+                        Text(m.displayName).tag(m)
+                    }
+                }
+                .pickerStyle(.segmented)
+            }
         }
     }
 }

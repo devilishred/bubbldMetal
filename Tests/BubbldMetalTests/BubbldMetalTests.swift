@@ -77,6 +77,23 @@ final class BubbldMetalTests: XCTestCase {
         }
     }
 
+    /// The dither post-process is off by default, and the `.dither(...)`
+    /// modifier turns it on over any style with the requested options.
+    func testDitherModifier() {
+        XCTAssertNil(MetalShaderBackgroundView.Configuration.default.dither)
+
+        let view = MetalShaderBackgroundView(.clouds).dither(cell: 10, levels: 3, mark: .plus)
+        let d = view.configuration.dither
+        XCTAssertEqual(d?.cellSize, 10)
+        XCTAssertEqual(d?.levels, 3)
+        XCTAssertEqual(d?.mark, .plus)
+
+        // Defaults, and toggling back off.
+        XCTAssertEqual(MetalShaderBackgroundView.Configuration.Dither().mark, .square)
+        XCTAssertNil(MetalShaderBackgroundView(.ripple).dither().noDither().configuration.dither)
+        XCTAssertEqual(MetalShaderBackgroundView.Configuration.Dither.Mark.allCases.count, 3)
+    }
+
     /// Smoke test: the `.metal` source compiled into a `default.metallib` in the
     /// package bundle and exposes the stitchable `fbp` function. Skips cleanly on
     /// machines without a GPU (e.g. headless CI runners).
@@ -87,7 +104,7 @@ final class BubbldMetalTests: XCTestCase {
         }
         let library = try device.makeDefaultLibrary(bundle: .module)
         for name in ["fbp", "liquidMetal", "aurora", "plasma",
-                     "fractalClouds", "inkSmoke", "liquidChrome"] {
+                     "fractalClouds", "inkSmoke", "liquidChrome", "halftoneDither"] {
             XCTAssertNotNil(library.makeFunction(name: name),
                             "Expected stitchable function `\(name)` in default.metallib")
         }

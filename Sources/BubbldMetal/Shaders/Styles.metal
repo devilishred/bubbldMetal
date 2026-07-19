@@ -307,3 +307,64 @@ static inline float m_edgeFalloff(float2 uv, float margin) {
     metal = mix(metal, float3(1.0), spec * 0.5);
     return half4(half3(saturate(metal)), 1.0);
 }
+
+
+// MARK: - Halftone / ordered-dither post-process
+//
+// A `.layerEffect` applied *on top of* any other style (or a plain gradient):
+// it pixelates the layer beneath into cells, then quantizes each cell to
+// `levels` steps per channel using a 4x4 Bayer ordered-dither matrix, giving
+// the retro dithered-gradient look. `mark` chooses how each cell is drawn:
+//   0 = fill the whole cell (square)   — flat cells, dithered transitions
+//   1 = round halftone dot (grows darker) on a white ground
+//   2 = plus / cross glyph on a white ground
+// Because it samples the composited layer below, it works over ripple, clouds,
+// plasma, etc. — not just one field.
+
+// Bayer 4x4 threshold matrix, normalized to [0,1).
+constant float bayer4[16] = {
+     0.0 / 16.0,  8.0 / 16.0,  2.0 / 16.0, 10.0 / 16.0,
+    12.0 / 16.0,  4.0 / 16.0, 14.0 / 16.0,  6.0 / 16.0,
+     3.0 / 16.0, 11.0 / 16.0,  1.0 / 16.0,  9.0 / 16.0,
+    15.0 / 16.0,  7.0 / 16.0, 13.0 / 16.0,  5.0 / 16.0,
+};
+
+[[ stitchable ]] half4 halftoneDither(float2 pos, SwiftUI::Layer l, float4 boundingBox,
+                                      float cellSize, float levels, float mark) {
+    float cs = max(cellSize, 1.0);
+
+    // Pixelate: snap to the cell and sample the field at the cell's center.
+    float2 cellIndex = floor(pos / cs);
+    float2 cellCenter = (cellIndex + 0.5) * cs;
+    half4 base = l.sample(cellCenter);
+
+    // One ordered-dither threshold per cell (constant across the cell), so
+    // adjacent cells alternate quantization levels — the checkerboard texture.
+    int bx = int(cellIndex.x - 4.0 * floor(cellIndex.x / 4.0));
+    int by = int(cellIndex.y - 4.0 * floor(cellIndex.y / 4.0));
+    float threshold = bayer4[by * 4 + bx];
+
+    // Dithered posterize to `levels` steps per channel.
+    float steps = max(levels - 1.0, 1.0);
+    float3 q = clamp(round(float3(base.rgb) * steps + (threshold - 0.5)) / steps, 0.0, 1.0);
+
+    if (mark < 0.5) {
+        return half4(half3(q), base.a);            // square: fill the cell
+    }
+
+    // Mark shapes draw the quantized color as a glyph on a white ground, sized
+    // by how dark the cell is (classic halftone behavior).
+    float2 f = (pos - cellCenter) / (cs * 0.5);    // local coords, ~[-1, 1]
+    float lum = dot(q, float3(0.299, 0.587, 0.114));
+    float amount = 1.0 - lum;                       // darker cell → bigger mark
+    float3 ground = float3(1.0);
+
+    bool on;
+    if (mark < 1.5) {
+        on = length(f) < amount * 1.2;              // round dot
+    } else {
+        float arm = amount * 0.9;                    // plus / cross
+        on = (abs(f.x) < arm) || (abs(f.y) < arm);
+    }
+    return half4(half3(on ? q : ground), base.a);
+}
