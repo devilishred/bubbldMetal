@@ -330,8 +330,14 @@ constant float bayer4[16] = {
 };
 
 [[ stitchable ]] half4 halftoneDither(float2 pos, SwiftUI::Layer l, float4 boundingBox,
-                                      float cellSize, float levels, float mark) {
-    float cs = max(cellSize, 1.0);
+                                      float cellSize, float levels, float mark,
+                                      float referenceWidth) {
+    // cellSize is in design-space points: scale by the render width against the
+    // reference width (like the orbit radius) so an 8pt cell looks the same in
+    // the live preview and a full-resolution wallpaper export. Without this,
+    // export cells shrank ~3x on phones (14x on Mac) and the effect vanished.
+    float rs = referenceWidth > 0.5 ? (boundingBox[2] / referenceWidth) : 1.0;
+    float cs = max(cellSize * rs, 1.0);
 
     // Pixelate: snap to the cell and sample the field at the cell's center.
     float2 cellIndex = floor(pos / cs);

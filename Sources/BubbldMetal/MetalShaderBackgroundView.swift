@@ -578,11 +578,15 @@ public struct MetalShaderBackgroundView: View {
             }
         }
         if let d = configuration.dither {
-            // The dither samples the composited field within one cell, so the
-            // sample offset only needs to cover a cell.
+            // The dither samples the composited field at cell centers. Cells are
+            // design-space (scaled up at export resolution), so the declared
+            // sample bound must cover the LARGEST scaled cell — an undersized
+            // bound gets samples clamped and silently kills the effect in
+            // ImageRenderer exports. 16x covers any realistic render width.
+            let bound = CGFloat(d.cellSize) * 16
             styled.layerEffect(
                 ditherShader(d),
-                maxSampleOffset: CGSize(width: CGFloat(d.cellSize), height: CGFloat(d.cellSize))
+                maxSampleOffset: CGSize(width: bound, height: bound)
             )
         } else {
             styled
@@ -595,7 +599,10 @@ public struct MetalShaderBackgroundView: View {
             .boundingRect,
             .float(d.cellSize),
             .float(d.levels),
-            .float(Float(d.mark.rawValue))
+            .float(Float(d.mark.rawValue)),
+            // Design-space cells: the shader scales cellSize by
+            // renderWidth / referenceWidth so preview and export coincide.
+            .float(Float(phaseReferenceWidth))
         )
     }
 }
