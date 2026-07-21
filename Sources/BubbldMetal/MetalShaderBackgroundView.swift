@@ -84,8 +84,27 @@ public struct MetalShaderBackgroundView: View {
 
         // MARK: Gradient
 
+        /// The base gradient's geometry. Linear runs startPoint -> endPoint;
+        /// radial blooms from startPoint outward; angular sweeps around
+        /// startPoint beginning at the start->end direction.
+        public enum GradientKind: Int, CaseIterable, Sendable {
+            case linear = 0
+            case radial = 1
+            case angular = 2
+
+            public var displayName: String {
+                switch self {
+                case .linear:  return "Linear"
+                case .radial:  return "Radial"
+                case .angular: return "Angular"
+                }
+            }
+        }
+
         /// How much `color4` is blended into `color1` at the top stop (0...1).
         public var topColorMix: Double
+        /// The gradient geometry (linear / radial / angular).
+        public var gradientKind: GradientKind
         /// Gradient start point.
         public var startPoint: UnitPoint
         /// Gradient end point.
@@ -153,6 +172,7 @@ public struct MetalShaderBackgroundView: View {
             displacementStrength: Float = 0.3,
             sheen: Float = 0.5,
             topColorMix: Double = 0.8,
+            gradientKind: GradientKind = .linear,
             startPoint: UnitPoint = .top,
             endPoint: UnitPoint = .bottomTrailing,
             orbitRadius: Double = 300,
@@ -169,6 +189,7 @@ public struct MetalShaderBackgroundView: View {
             self.displacementStrength = displacementStrength
             self.sheen = sheen
             self.topColorMix = topColorMix
+            self.gradientKind = gradientKind
             self.startPoint = startPoint
             self.endPoint = endPoint
             self.orbitRadius = orbitRadius
@@ -350,6 +371,11 @@ public struct MetalShaderBackgroundView: View {
     public func strength(_ value: Float) -> Self { with { $0.configuration.strength = value } }
     /// Number of wavefronts. Higher = tighter rings/bands.
     public func rippleFrequency(_ value: Float) -> Self { with { $0.configuration.rippleFrequency = value } }
+    /// The base gradient's geometry (linear / radial / angular).
+    public func gradientKind(_ kind: Configuration.GradientKind) -> Self {
+        with { $0.configuration.gradientKind = kind }
+    }
+
     /// Animation speed of the ripples (`.ripple` only).
     public func rippleSpeed(_ value: Float) -> Self { with { $0.configuration.rippleSpeed = value } }
     /// How far the shader warps the sampled image.
@@ -499,16 +525,38 @@ public struct MetalShaderBackgroundView: View {
 
     /// The base gradient the shader distorts (layer styles) or overwrites
     /// (color-effect styles).
-    private var gradient: LinearGradient {
-        LinearGradient(
-            colors: [
-                color1.mix(with: color4, by: configuration.topColorMix),
-                color2,
-                color3,
-            ],
-            startPoint: configuration.startPoint,
-            endPoint: configuration.endPoint
-        )
+    private var gradientStops: [Color] {
+        [
+            color1.mix(with: color4, by: configuration.topColorMix),
+            color2,
+            color3,
+        ]
+    }
+
+    @ViewBuilder private var gradient: some View {
+        switch configuration.gradientKind {
+        case .linear:
+            LinearGradient(colors: gradientStops,
+                           startPoint: configuration.startPoint,
+                           endPoint: configuration.endPoint)
+        case .radial:
+            // Blooms from startPoint; radius scales with the render size so
+            // live preview and export coincide.
+            GeometryReader { geo in
+                RadialGradient(colors: gradientStops,
+                               center: configuration.startPoint,
+                               startRadius: 0,
+                               endRadius: max(geo.size.width, geo.size.height) * 0.85)
+            }
+        case .angular:
+            // Sweeps around startPoint, beginning at the start->end direction;
+            // the first color repeats at the end so the seam is continuous.
+            AngularGradient(colors: gradientStops + [gradientStops[0]],
+                            center: configuration.startPoint,
+                            angle: .radians(atan2(
+                                configuration.endPoint.y - configuration.startPoint.y,
+                                configuration.endPoint.x - configuration.startPoint.x)))
+        }
     }
 
     public var body: some View {
