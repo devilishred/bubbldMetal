@@ -347,12 +347,14 @@ static inline float m_voronoiF1(float2 p, float t) {
                                   half4 c1, half4 c2, half4 c3, half4 c4) {
     float2 size = float2(boundingBox[2], boundingBox[3]);
     float2 uv = pos / size;
-    float t = time * speed * 0.12;
+    // Fast enough to visibly drift and morph; each field moves on its own
+    // clock/direction so the blobs churn rather than translate.
+    float t = time * speed * 0.5;
     float2 q = uv * max(frequency * 0.4, 0.2);
 
-    float a = m_fbm(q + float2(t * 0.11, -t * 0.07));
-    float b = m_fbm(q + float2(4.7, 2.3) - t * 0.09);
-    float m = m_fbm(float2(q.y, q.x) + float2(1.9, 7.3) + t * 0.05);
+    float a = m_fbm(q + float2(t * 0.22, -t * 0.14));
+    float b = m_fbm(q + float2(4.7, 2.3) - t * 0.18);
+    float m = m_fbm(float2(q.y, q.x) + float2(1.9, 7.3) + t * 0.11);
     float3 top = mix(float3(c1.rgb), float3(c2.rgb), smoothstep(0.25, 0.75, a));
     float3 bot = mix(float3(c3.rgb), float3(c4.rgb), smoothstep(0.25, 0.75, b));
     float3 col = mix(top, bot, smoothstep(0.2, 0.8, m));
@@ -469,10 +471,10 @@ static inline float m_voronoiF1(float2 p, float t) {
                                 half4 base, half4 tint) {
     float2 size = float2(boundingBox[2], boundingBox[3]);
     float2 uv = pos / size;
-    float t = time * speed * 0.25;
+    float t = time * speed * 0.6;
 
-    // Simulated tilt: the light direction slowly orbits.
-    float ang = t * 0.5;
+    // Simulated tilt: the light direction orbits.
+    float ang = t * 0.8;
     float d = dot(uv - 0.5, float2(cos(ang), sin(ang)));
 
     // Diamond micro-pattern etched into the foil.
@@ -480,18 +482,15 @@ static inline float m_voronoiF1(float2 p, float t) {
     float diamond = abs(fract(q.x + q.y) - 0.5) + abs(fract(q.x - q.y) - 0.5);
 
     // Rainbow band: position along the light axis + the micro-pattern + a
-    // little fbm so the sheen shimmers rather than banding rigidly.
-    float band = d * 3.0 + diamond * warp * 3.0 + m_fbm3(uv * 6.0 + t * 0.2) * 0.5;
+    // little fbm shimmer, all scrolling with time so the colors visibly flow
+    // even between tilt sweeps.
+    float band = d * 3.0 + diamond * warp * 3.0
+               + m_fbm3(uv * 6.0 + t * 0.4) * 0.5
+               + t * 0.5;
     float3 irid = 0.5 + 0.5 * cos(6.2831 * (band + float3(0.0, 0.33, 0.67)));
 
     float3 ground = mix(float3(base.rgb), float3(tint.rgb), saturate(0.5 + d * 1.5));
     float3 col = mix(ground, irid, 0.55);
-
-    // Sparse sparkle glints, twinkling out of phase.
-    float2 cell = floor(uv * size / 3.0);
-    float s = m_random(cell);
-    float tw = pow(0.5 + 0.5 * sin(t * 4.0 + s * 40.0), 8.0);
-    col += step(0.985, s) * tw * 0.9;
     return half4(half3(saturate(col)), 1.0);
 }
 
@@ -610,17 +609,12 @@ static inline float m_voronoiF1(float2 p, float t) {
     float d = m_fbm(q + warp * 3.0 * w + float2(t * 0.02, 0.0));
     d = pow(smoothstep(0.3, 0.9, d), 1.4);
 
-    // Deep space -> mid gas -> bright core.
+    // Deep space -> mid gas -> bright core, with the fourth color glowing
+    // through the densest gas (no starfield — it read as white speckles).
     float3 col = float3(c3.rgb) * 0.25;
     col = mix(col, float3(c2.rgb), smoothstep(0.15, 0.6, d));
     col = mix(col, float3(c1.rgb), smoothstep(0.6, 0.95, d));
-
-    // Starfield: pixel-grid hash, brightest few pixels bloomed + twinkling.
-    float2 cell = floor(uv * size / 2.0);
-    float s = m_random(cell);
-    float tw = 0.6 + 0.4 * sin(t * 6.0 + s * 50.0);
-    float star = step(0.9965, s) * tw;
-    col += star * mix(float3(1.0), float3(c4.rgb), 0.35);
+    col = mix(col, float3(c4.rgb), smoothstep(0.9, 1.0, d) * 0.5);
     return half4(half3(saturate(col)), 1.0);
 }
 
