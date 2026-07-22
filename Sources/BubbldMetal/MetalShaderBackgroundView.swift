@@ -31,6 +31,26 @@ public struct MetalShaderBackgroundView: View {
         case smoke
         /// Warped-fbm height field faked into a liquid-metal reflection.
         case chrome
+        /// Soft blurred palette blobs under static film grain.
+        case grain
+        /// Flowing satin ribbons with a sweeping sheen (two colors).
+        case silk
+        /// Lava-lamp metaballs melting through the palette.
+        case blobs
+        /// Drifting defocused light discs over a two-color backdrop.
+        case bokeh
+        /// The holographic-sticker foil as a full-bleed background (two colors).
+        case holoFoil
+        /// Ink-marbling veins through a softly varying base.
+        case marble
+        /// Underwater light webs dancing over a depth gradient.
+        case caustics
+        /// Hard-edged Voronoi panes with dark leading, slowly morphing.
+        case stainedGlass
+        /// Deep-space gas clouds with a twinkling starfield.
+        case nebula
+        /// Animated topographic contour lines over elevation shading.
+        case topo
 
         /// Human-readable label for pickers and UI.
         public var displayName: String {
@@ -42,16 +62,27 @@ public struct MetalShaderBackgroundView: View {
             case .clouds:       return "Clouds"
             case .smoke:        return "Smoke"
             case .chrome:       return "Chrome"
+            case .grain:        return "Grain"
+            case .silk:         return "Silk"
+            case .blobs:        return "Blobs"
+            case .bokeh:        return "Bokeh"
+            case .holoFoil:     return "Holo Foil"
+            case .marble:       return "Marble"
+            case .caustics:     return "Caustics"
+            case .stainedGlass: return "Stained Glass"
+            case .nebula:       return "Nebula"
+            case .topo:         return "Topo"
             }
         }
 
         /// Whether this style is a self-generating `.colorEffect` (synthesizes
         /// its own color and ignores the gradient) rather than a `.layerEffect`
         /// that displaces the gradient. Determines which SwiftUI modifier drives it.
+        /// Every 2026-batch style is a color effect.
         public var isColorEffect: Bool {
             switch self {
-            case .clouds, .smoke, .chrome: return true
-            default:                       return false
+            case .ripple, .liquidMetal, .aurora, .plasma: return false
+            default:                                      return true
             }
         }
     }
@@ -253,6 +284,50 @@ public struct MetalShaderBackgroundView: View {
             style: .chrome, noise: 3.25, strength: 5, rippleSpeed: 3
         )
 
+        // The 2026 batch. All are color effects wired like Clouds/Smoke:
+        // `noise` = field scale, `strength` = the style's character knob
+        // (grain amount / wobble / vein warp / leading…), `rippleSpeed` = pace.
+        /// Grainy blurred gradient — the `.grain` style.
+        public static let grain = Configuration(
+            style: .grain, noise: 3, strength: 8, rippleSpeed: 2
+        )
+        /// Flowing satin — the `.silk` style.
+        public static let silk = Configuration(
+            style: .silk, noise: 3, strength: 4, rippleSpeed: 2
+        )
+        /// Lava-lamp metaballs — the `.blobs` style.
+        public static let blobs = Configuration(
+            style: .blobs, noise: 3.25, strength: 3, rippleSpeed: 3
+        )
+        /// Soft-focus light discs — the `.bokeh` style.
+        public static let bokeh = Configuration(
+            style: .bokeh, noise: 4, strength: 5, rippleSpeed: 2
+        )
+        /// Holographic foil sheen — the `.holoFoil` style.
+        public static let holoFoil = Configuration(
+            style: .holoFoil, noise: 1, strength: 2, rippleSpeed: 3
+        )
+        /// Ink-marbling veins — the `.marble` style.
+        public static let marble = Configuration(
+            style: .marble, noise: 4, strength: 6, rippleSpeed: 1
+        )
+        /// Underwater light webs — the `.caustics` style.
+        public static let caustics = Configuration(
+            style: .caustics, noise: 6, strength: 5, rippleSpeed: 3
+        )
+        /// Morphing glass panes — the `.stainedGlass` style.
+        public static let stainedGlass = Configuration(
+            style: .stainedGlass, noise: 5, strength: 3, rippleSpeed: 1
+        )
+        /// Deep-space clouds + stars — the `.nebula` style.
+        public static let nebula = Configuration(
+            style: .nebula, noise: 3, strength: 6, rippleSpeed: 2
+        )
+        /// Living topographic map — the `.topo` style.
+        public static let topo = Configuration(
+            style: .topo, noise: 4, strength: 5, rippleSpeed: 2
+        )
+
         /// The tuned preset for a given style — what `MetalShaderBackgroundView(style)`
         /// starts from before any modifiers are applied.
         public static func preset(for style: BackgroundStyle) -> Configuration {
@@ -264,6 +339,16 @@ public struct MetalShaderBackgroundView: View {
             case .clouds:       return .clouds
             case .smoke:        return .smoke
             case .chrome:       return .chrome
+            case .grain:        return .grain
+            case .silk:         return .silk
+            case .blobs:        return .blobs
+            case .bokeh:        return .bokeh
+            case .holoFoil:     return .holoFoil
+            case .marble:       return .marble
+            case .caustics:     return .caustics
+            case .stainedGlass: return .stainedGlass
+            case .nebula:       return .nebula
+            case .topo:         return .topo
             }
         }
     }
@@ -518,6 +603,81 @@ public struct MetalShaderBackgroundView: View {
                 .boundingRect, .float(t),
                 .float(c.noise), .float(c.strength * 0.2), .float(c.rippleSpeed),
                 .color(color1), .color(color2),
+            ]
+
+        // The 2026 batch — all color effects with the same argument shape:
+        // (bounds, time, frequency, warp, speed, palette…). The per-style
+        // multiplier maps the shared 0–40 Strength knob onto each shader's
+        // natural warp range.
+        case .grain:
+            function = lib.grainStyle
+            arguments = [
+                .boundingRect, .float(t),
+                .float(c.noise), .float(c.strength * 0.05), .float(c.rippleSpeed),
+                .color(color1), .color(color2), .color(color3), .color(color4),
+            ]
+        case .silk:
+            function = lib.silk
+            arguments = [
+                .boundingRect, .float(t),
+                .float(c.noise), .float(c.strength * 0.05), .float(c.rippleSpeed),
+                .color(color1), .color(color2),
+            ]
+        case .blobs:
+            function = lib.blobs
+            arguments = [
+                .boundingRect, .float(t),
+                .float(c.noise), .float(c.strength * 0.02), .float(c.rippleSpeed),
+                .color(color1), .color(color2), .color(color3), .color(color4),
+            ]
+        case .bokeh:
+            function = lib.bokeh
+            arguments = [
+                .boundingRect, .float(t),
+                .float(c.noise), .float(c.strength * 0.1), .float(c.rippleSpeed),
+                .color(color1), .color(color2), .color(color3), .color(color4),
+            ]
+        case .holoFoil:
+            function = lib.holoFoil
+            arguments = [
+                .boundingRect, .float(t),
+                .float(c.noise), .float(c.strength * 0.1), .float(c.rippleSpeed),
+                .color(color1), .color(color2),
+            ]
+        case .marble:
+            function = lib.marble
+            arguments = [
+                .boundingRect, .float(t),
+                .float(c.noise), .float(c.strength * 0.05), .float(c.rippleSpeed),
+                .color(color1), .color(color2), .color(color3), .color(color4),
+            ]
+        case .caustics:
+            function = lib.caustics
+            arguments = [
+                .boundingRect, .float(t),
+                .float(c.noise), .float(c.strength * 0.1), .float(c.rippleSpeed),
+                .color(color1), .color(color2), .color(color3), .color(color4),
+            ]
+        case .stainedGlass:
+            function = lib.stainedGlass
+            arguments = [
+                .boundingRect, .float(t),
+                .float(c.noise), .float(c.strength * 0.1), .float(c.rippleSpeed),
+                .color(color1), .color(color2), .color(color3), .color(color4),
+            ]
+        case .nebula:
+            function = lib.nebula
+            arguments = [
+                .boundingRect, .float(t),
+                .float(c.noise), .float(c.strength * 0.08), .float(c.rippleSpeed),
+                .color(color1), .color(color2), .color(color3), .color(color4),
+            ]
+        case .topo:
+            function = lib.topo
+            arguments = [
+                .boundingRect, .float(t),
+                .float(c.noise), .float(c.strength * 0.1), .float(c.rippleSpeed),
+                .color(color1), .color(color2), .color(color3), .color(color4),
             ]
         }
         return Shader(function: function, arguments: arguments)

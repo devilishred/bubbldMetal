@@ -309,6 +309,353 @@ static inline float m_edgeFalloff(float2 uv, float margin) {
 }
 
 
+// MARK: - Extra hash / cell-noise helpers for the 2026 style batch
+
+// 2D-in / 2D-out hash (Dave Hoskins' hash22) for jittered grids & Voronoi.
+static inline float2 m_hash22(float2 p) {
+    float3 p3 = fract(float3(p.x, p.y, p.x) * float3(0.1031, 0.1030, 0.0973));
+    p3 += dot(p3, float3(p3.y, p3.z, p3.x) + 33.33);
+    return fract((float2(p3.x, p3.x) + float2(p3.y, p3.z)) * float2(p3.z, p3.y));
+}
+
+// Animated Voronoi: F1 (distance to nearest feature point), with the points
+// breathing on sine orbits so cells morph instead of translating.
+static inline float m_voronoiF1(float2 p, float t) {
+    float2 i = floor(p);
+    float2 f = fract(p);
+    float md = 8.0;
+    for (int y = -1; y <= 1; y++) {
+        for (int x = -1; x <= 1; x++) {
+            float2 g = float2(x, y);
+            float2 o = m_hash22(i + g);
+            o = 0.5 + 0.4 * sin(t + 6.2831 * o);
+            float2 r = g + o - f;
+            md = min(md, dot(r, r));
+        }
+    }
+    return sqrt(md);
+}
+
+
+// MARK: - Grain (soft gradient field + film grain)
+
+// The "grainy gradient" look: a slow low-frequency fbm melts the four palette
+// colors into soft blurred blobs, then a static per-pixel grain sits on top.
+// `frequency` = blob scale, `warp` = grain amount, `speed` = drift.
+[[ stitchable ]] half4 grainStyle(float2 pos, half4 color, float4 boundingBox,
+                                  float time, float frequency, float warp, float speed,
+                                  half4 c1, half4 c2, half4 c3, half4 c4) {
+    float2 size = float2(boundingBox[2], boundingBox[3]);
+    float2 uv = pos / size;
+    float t = time * speed * 0.12;
+    float2 q = uv * max(frequency * 0.4, 0.2);
+
+    float a = m_fbm(q + float2(t * 0.11, -t * 0.07));
+    float b = m_fbm(q + float2(4.7, 2.3) - t * 0.09);
+    float m = m_fbm(float2(q.y, q.x) + float2(1.9, 7.3) + t * 0.05);
+    float3 top = mix(float3(c1.rgb), float3(c2.rgb), smoothstep(0.25, 0.75, a));
+    float3 bot = mix(float3(c3.rgb), float3(c4.rgb), smoothstep(0.25, 0.75, b));
+    float3 col = mix(top, bot, smoothstep(0.2, 0.8, m));
+
+    // Static film grain (hash of the pixel, not time) so exports stay crisp.
+    float g = m_random(pos) - 0.5;
+    col += g * saturate(warp) * 0.35;
+    return half4(half3(saturate(col)), 1.0);
+}
+
+
+// MARK: - Silk (flowing satin ribbons, two colors)
+
+// Layered sine waves with an fbm-perturbed phase read as draped satin:
+// shadow-to-highlight fabric shading plus a slowly sweeping specular sheen.
+[[ stitchable ]] half4 silk(float2 pos, half4 color, float4 boundingBox,
+                            float time, float frequency, float warp, float speed,
+                            half4 highlight, half4 shadow) {
+    float2 size = float2(boundingBox[2], boundingBox[3]);
+    float2 uv = pos / size;
+    float t = time * speed * 0.25;
+    float2 q = uv * max(frequency, 0.5);
+
+    float phase = q.x * 1.8 + q.y * 1.2
+                + (m_fbm3(q * 1.5 + float2(t * 0.2, 0.0)) - 0.5) * warp * 6.0;
+    float f = sin(phase * 3.0 + t)
+            + 0.5 * sin(phase * 5.0 - t * 0.7)
+            + 0.25 * sin(phase * 9.0 + t * 0.4);
+    float lum = saturate(0.5 + 0.3 * f);
+    float3 col = mix(float3(shadow.rgb), float3(highlight.rgb), lum);
+
+    // Moving sheen: a tight specular band drifting across the folds.
+    float spec = pow(saturate(0.5 + 0.5 * sin(phase * 3.0 + t + 1.2)), 24.0);
+    col += spec * 0.35;
+    return half4(half3(saturate(col)), 1.0);
+}
+
+
+// MARK: - Blobs (lava-lamp metaballs)
+
+// Five metaballs on incommensurate sine orbits, their summed field mapped
+// through the four-color palette. `frequency` = blob size, `warp` = organic
+// edge wobble, `speed` = drift.
+[[ stitchable ]] half4 blobs(float2 pos, half4 color, float4 boundingBox,
+                             float time, float frequency, float warp, float speed,
+                             half4 c1, half4 c2, half4 c3, half4 c4) {
+    float2 size = float2(boundingBox[2], boundingBox[3]);
+    float2 uv = pos / size;
+    float aspect = size.x / max(size.y, 1.0);
+    float2 p = float2(uv.x * aspect, uv.y);
+    float t = time * speed * 0.2;
+
+    float field = 0.0;
+    for (int i = 0; i < 5; i++) {
+        float fi = float(i);
+        float2 c = float2(0.5 * aspect, 0.5)
+                 + float2(sin(t * (0.60 + 0.13 * fi) + fi * 2.4),
+                          cos(t * (0.50 + 0.11 * fi) + fi * 1.9))
+                 * (0.18 + 0.06 * sin(fi * 3.7 + t * 0.3));
+        float2 d = p - c;
+        field += (0.004 + 0.0035 * max(frequency, 0.5)) / (dot(d, d) + 1e-4);
+    }
+    // Organic edges: fbm wobble on the field before thresholding.
+    field += (m_fbm3(p * 6.0 + t * 0.5) - 0.5) * warp * 2.0;
+    float d = saturate(field * 0.55);
+
+    float3 col = float3(c3.rgb);
+    col = mix(col, float3(c2.rgb), smoothstep(0.35, 0.55, d));
+    col = mix(col, float3(c1.rgb), smoothstep(0.55, 0.80, d));
+    col = mix(col, float3(c4.rgb), smoothstep(0.88, 1.00, d));
+    return half4(half3(col), 1.0);
+}
+
+
+// MARK: - Bokeh (drifting soft-focus light discs)
+
+// Three jittered-grid layers of defocused discs twinkling over a two-color
+// backdrop. `frequency` = disc density, `speed` = drift + twinkle rate.
+[[ stitchable ]] half4 bokeh(float2 pos, half4 color, float4 boundingBox,
+                             float time, float frequency, float warp, float speed,
+                             half4 c1, half4 c2, half4 c3, half4 c4) {
+    float2 size = float2(boundingBox[2], boundingBox[3]);
+    float2 uv = pos / size;
+    float t = time * speed * 0.15;
+
+    float3 col = mix(float3(c3.rgb), float3(c2.rgb), uv.y);
+
+    for (int i = 0; i < 3; i++) {
+        float fi = float(i);
+        float scale = max(frequency, 1.0) * (1.2 + fi * 1.1);
+        float2 g = uv * scale + float2(t * (0.08 + fi * 0.05), t * 0.03 * (fi - 1.0));
+        float2 id = floor(g);
+        float2 f = fract(g);
+        float2 rnd = m_hash22(id + fi * 17.0);
+        float2 center = 0.5 + (rnd - 0.5) * 0.55;
+        float r = 0.14 + 0.22 * m_random(id + fi * 31.0);
+        float twinkle = 0.35 + 0.65 * (0.5 + 0.5 * sin(t * (2.0 + rnd.x * 3.0) + rnd.y * 6.2831));
+        // Wide smoothstep = defocused edge; nearer layers are softer + dimmer.
+        float disc = smoothstep(r, r * (0.25 + 0.2 * fi), length(f - center));
+        float3 tint = mix(float3(c1.rgb), float3(c4.rgb), rnd.x);
+        col += disc * twinkle * (0.30 - 0.06 * fi) * tint;
+    }
+    return half4(half3(saturate(col)), 1.0);
+}
+
+
+// MARK: - Holo Foil (the sticker foil as a full-bleed background)
+
+// Diagonal rainbow sheen sweeping over a diamond micro-pattern with sparkle
+// glints — the app's holographic-sticker identity as a wallpaper. Two colors:
+// `base` (the metal ground) and `tint` (pulled into the sheen).
+[[ stitchable ]] half4 holoFoil(float2 pos, half4 color, float4 boundingBox,
+                                float time, float frequency, float warp, float speed,
+                                half4 base, half4 tint) {
+    float2 size = float2(boundingBox[2], boundingBox[3]);
+    float2 uv = pos / size;
+    float t = time * speed * 0.25;
+
+    // Simulated tilt: the light direction slowly orbits.
+    float ang = t * 0.5;
+    float d = dot(uv - 0.5, float2(cos(ang), sin(ang)));
+
+    // Diamond micro-pattern etched into the foil.
+    float2 q = uv * max(frequency, 0.3) * 24.0;
+    float diamond = abs(fract(q.x + q.y) - 0.5) + abs(fract(q.x - q.y) - 0.5);
+
+    // Rainbow band: position along the light axis + the micro-pattern + a
+    // little fbm so the sheen shimmers rather than banding rigidly.
+    float band = d * 3.0 + diamond * warp * 3.0 + m_fbm3(uv * 6.0 + t * 0.2) * 0.5;
+    float3 irid = 0.5 + 0.5 * cos(6.2831 * (band + float3(0.0, 0.33, 0.67)));
+
+    float3 ground = mix(float3(base.rgb), float3(tint.rgb), saturate(0.5 + d * 1.5));
+    float3 col = mix(ground, irid, 0.55);
+
+    // Sparse sparkle glints, twinkling out of phase.
+    float2 cell = floor(uv * size / 3.0);
+    float s = m_random(cell);
+    float tw = pow(0.5 + 0.5 * sin(t * 4.0 + s * 40.0), 8.0);
+    col += step(0.985, s) * tw * 0.9;
+    return half4(half3(saturate(col)), 1.0);
+}
+
+
+// MARK: - Marble (ink-marbling veins)
+
+// A folded sine over a two-level fbm domain warp: thin bright veins snaking
+// through a softly varying base — suminagashi / polished stone.
+[[ stitchable ]] half4 marble(float2 pos, half4 color, float4 boundingBox,
+                              float time, float frequency, float warp, float speed,
+                              half4 c1, half4 c2, half4 c3, half4 c4) {
+    float2 size = float2(boundingBox[2], boundingBox[3]);
+    float2 uv = pos / size;
+    float t = time * speed * 0.04;          // geologic pace
+    float2 q = uv * max(frequency, 0.5);
+
+    float2 w1 = float2(m_fbm(q + float2(0.0, t)),
+                       m_fbm(q + float2(3.1, 1.7) - t * 0.8));
+    float2 w2 = float2(m_fbm(q + warp * 4.0 * w1 + t * 0.5),
+                       m_fbm(q + warp * 4.0 * w1 + float2(2.3, 5.9)));
+    float v = sin((q.x + q.y) * 1.5 + (w2.x - 0.5) * warp * 18.0);
+
+    float vein = pow(1.0 - abs(v), 6.0);
+    float3 baseCol = mix(float3(c2.rgb), float3(c3.rgb), m_fbm(q * 0.6 + w1 * 0.5));
+    float3 veinCol = mix(float3(c1.rgb), float3(c4.rgb), m_fbm(q * 1.3 + 7.7));
+    float3 col = mix(baseCol, veinCol, saturate(vein));
+    return half4(half3(col), 1.0);
+}
+
+
+// MARK: - Caustics (underwater light webs)
+
+// Two counter-scrolling animated Voronoi layers multiplied into the bright
+// ridge web that dances on a pool floor, over a depth gradient.
+[[ stitchable ]] half4 caustics(float2 pos, half4 color, float4 boundingBox,
+                                float time, float frequency, float warp, float speed,
+                                half4 c1, half4 c2, half4 c3, half4 c4) {
+    float2 size = float2(boundingBox[2], boundingBox[3]);
+    float2 uv = pos / size;
+    float t = time * speed * 0.3;
+    float2 q = uv * max(frequency, 1.0);
+
+    float v1 = m_voronoiF1(q, t);
+    float v2 = m_voronoiF1(q * 1.7 + 3.1, t * 1.23 + 1.0);
+    // The web: bright where BOTH fields are near a ridge; `warp` sharpens.
+    float web = pow(saturate(1.0 - v1 * v2 * 1.6), 2.0 + warp * 6.0);
+
+    float3 water = mix(float3(c2.rgb), float3(c3.rgb), uv.y);
+    water = mix(water, float3(c4.rgb), m_fbm3(q * 0.5 + t * 0.1) * 0.35);
+    float3 col = water + float3(c1.rgb) * web * 0.9;
+    return half4(half3(saturate(col)), 1.0);
+}
+
+
+// MARK: - Stained Glass (hard-edged Voronoi cells)
+
+// Voronoi cells each filled from the four-color palette with dark leading
+// between them. Feature points breathe so the panes slowly morph.
+// `frequency` = pane count, `warp` = leading thickness.
+[[ stitchable ]] half4 stainedGlass(float2 pos, half4 color, float4 boundingBox,
+                                    float time, float frequency, float warp, float speed,
+                                    half4 c1, half4 c2, half4 c3, half4 c4) {
+    float2 size = float2(boundingBox[2], boundingBox[3]);
+    float2 uv = pos / size;
+    float t = time * speed * 0.1;
+    float2 q = uv * max(frequency, 1.0);
+
+    // F1/F2 Voronoi with the winning cell's id, for edges + per-cell color.
+    float2 i = floor(q);
+    float2 f = fract(q);
+    float f1 = 8.0, f2 = 8.0;
+    float2 winner = float2(0.0);
+    for (int y = -1; y <= 1; y++) {
+        for (int x = -1; x <= 1; x++) {
+            float2 g = float2(x, y);
+            float2 o = m_hash22(i + g);
+            o = 0.5 + 0.35 * sin(t + 6.2831 * o);
+            float d = dot(g + o - f, g + o - f);
+            if (d < f1) { f2 = f1; f1 = d; winner = i + g; }
+            else if (d < f2) { f2 = d; }
+        }
+    }
+    float edge = sqrt(f2) - sqrt(f1);
+
+    // Pick this pane's color from the palette; a second hash varies its depth.
+    float h = m_random(winner + 0.5);
+    float shade = 0.8 + 0.2 * m_random(winner + 9.7);
+    float3 pane;
+    if      (h < 0.25) pane = float3(c1.rgb);
+    else if (h < 0.50) pane = float3(c2.rgb);
+    else if (h < 0.75) pane = float3(c3.rgb);
+    else               pane = float3(c4.rgb);
+    pane *= shade;
+
+    // Dark leading between panes; `warp` sets its thickness.
+    float lead = smoothstep(0.02, 0.05 + warp * 0.25, edge);
+    float3 col = mix(float3(0.05), pane, lead);
+    return half4(half3(col), 1.0);
+}
+
+
+// MARK: - Nebula (deep-space clouds + starfield)
+
+// Clouds' domain-warp recipe pushed dark and high-contrast, with a sparse
+// twinkling starfield on top.
+[[ stitchable ]] half4 nebula(float2 pos, half4 color, float4 boundingBox,
+                              float time, float frequency, float warp, float speed,
+                              half4 c1, half4 c2, half4 c3, half4 c4) {
+    float2 size = float2(boundingBox[2], boundingBox[3]);
+    float2 uv = pos / size;
+    float t = time * speed * 0.15;
+    float2 q = uv * max(frequency, 0.5);
+
+    float2 w = float2(m_fbm(q + float2(0.0, t * 0.06)),
+                      m_fbm(q + float2(5.2, 1.3) - t * 0.05));
+    float d = m_fbm(q + warp * 3.0 * w + float2(t * 0.02, 0.0));
+    d = pow(smoothstep(0.3, 0.9, d), 1.4);
+
+    // Deep space -> mid gas -> bright core.
+    float3 col = float3(c3.rgb) * 0.25;
+    col = mix(col, float3(c2.rgb), smoothstep(0.15, 0.6, d));
+    col = mix(col, float3(c1.rgb), smoothstep(0.6, 0.95, d));
+
+    // Starfield: pixel-grid hash, brightest few pixels bloomed + twinkling.
+    float2 cell = floor(uv * size / 2.0);
+    float s = m_random(cell);
+    float tw = 0.6 + 0.4 * sin(t * 6.0 + s * 50.0);
+    float star = step(0.9965, s) * tw;
+    col += star * mix(float3(1.0), float3(c4.rgb), 0.35);
+    return half4(half3(saturate(col)), 1.0);
+}
+
+
+// MARK: - Topo (animated contour lines)
+
+// Contour lines of a slowly morphing fbm height field over a soft elevation
+// tint — a living topographic map. `frequency` = terrain scale,
+// `warp` = ruggedness, `speed` = morph rate.
+[[ stitchable ]] half4 topo(float2 pos, half4 color, float4 boundingBox,
+                            float time, float frequency, float warp, float speed,
+                            half4 c1, half4 c2, half4 c3, half4 c4) {
+    float2 size = float2(boundingBox[2], boundingBox[3]);
+    float2 uv = pos / size;
+    float t = time * speed * 0.06;
+    float2 q = uv * max(frequency, 0.5);
+
+    float2 w = float2(m_fbm3(q + t), m_fbm3(q + float2(4.2, 1.7) - t * 0.8));
+    float h = m_fbm(q + warp * 2.0 * w);
+
+    // Elevation shading between two colors, contour lines in a third.
+    float3 col = mix(float3(c2.rgb), float3(c3.rgb), h);
+
+    float bands = 14.0;
+    float f = fract(h * bands);
+    // Screen-space-ish anti-aliased thin line at each band edge.
+    float line = smoothstep(0.10, 0.02, min(f, 1.0 - f));
+    col = mix(col, float3(c1.rgb), line * 0.9);
+
+    // Peaks tinted with the fourth color.
+    col = mix(col, float3(c4.rgb), smoothstep(0.78, 0.95, h) * 0.4);
+    return half4(half3(col), 1.0);
+}
+
+
 // MARK: - Halftone / ordered-dither post-process
 //
 // A `.layerEffect` applied *on top of* any other style (or a plain gradient):
