@@ -31,7 +31,7 @@ public struct MetalShaderBackgroundView: View {
         case smoke
         /// Warped-fbm height field faked into a liquid-metal reflection.
         case chrome
-        /// Soft blurred palette blobs under static film grain.
+        /// Soft blurred palette blobs under patchily shimmering film grain.
         case grain
         /// Flowing satin ribbons with a sweeping sheen (two colors).
         case silk

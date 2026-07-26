@@ -340,7 +340,8 @@ static inline float m_voronoiF1(float2 p, float t) {
 // MARK: - Grain (soft gradient field + film grain)
 
 // The "grainy gradient" look: a slow low-frequency fbm melts the four palette
-// colors into soft blurred blobs, then a static per-pixel grain sits on top.
+// colors into soft blurred blobs, under per-pixel film grain that shimmers in
+// slowly wandering patches (fully still whenever `speed` is 0).
 // `frequency` = blob scale, `warp` = grain amount, `speed` = drift.
 [[ stitchable ]] half4 grainStyle(float2 pos, half4 color, float4 boundingBox,
                                   float time, float frequency, float warp, float speed,
@@ -359,8 +360,18 @@ static inline float m_voronoiF1(float2 p, float t) {
     float3 bot = mix(float3(c3.rgb), float3(c4.rgb), smoothstep(0.25, 0.75, b));
     float3 col = mix(top, bot, smoothstep(0.2, 0.8, m));
 
-    // Static film grain (hash of the pixel, not time) so exports stay crisp.
-    float g = m_random(pos) - 0.5;
+    // Film grain over the field. A fully static hash read as frozen next to
+    // the drifting blobs — so the speckle re-seeds on a film-like cadence,
+    // but only inside patches of a slowly wandering mask: parts of the frame
+    // shimmer while the rest holds still, and the live regions breathe
+    // around the canvas instead of the whole texture flickering at once.
+    // Everything keys off `t`, so speed 0 / pause / stills stay deterministic.
+    float gStatic = m_random(pos) - 0.5;
+    float cadence = floor(t * 5.0);   // ~8 fps at default speed: sparkle, not strobe
+    float gLive = m_random(pos + float2(cadence * 13.37, cadence * 7.77)) - 0.5;
+    float breathe = m_fbm(q * 1.7 + float2(-t * 0.16, t * 0.21) + float2(3.1, 5.4));
+    float live = smoothstep(0.35, 0.75, breathe);
+    float g = mix(gStatic, gLive, live * 0.85);
     col += g * saturate(warp) * 0.35;
     return half4(half3(saturate(col)), 1.0);
 }
