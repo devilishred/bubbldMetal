@@ -720,9 +720,22 @@ constant float bayer4[16] = {
     bool on;
     if (mark < 1.5) {
         on = length(f) < amount * 1.2;              // round dot
-    } else {
+    } else if (mark < 2.5) {
         float arm = amount * 0.9;                    // plus / cross
         on = (abs(f.x) < arm) || (abs(f.y) < arm);
+    } else if (mark < 3.5) {
+        // Line screen: a full-width horizontal bar per cell. Bars align
+        // across the row into continuous lines whose weight tracks darkness.
+        on = abs(f.y) < amount;
+    } else if (mark < 4.5) {
+        // Hatch: a 45° stroke through the cell, adding the perpendicular
+        // direction once the cell is dark enough — pen-and-ink crosshatch.
+        float d1 = abs(f.x + f.y) * 0.7071;
+        float d2 = abs(f.x - f.y) * 0.7071;
+        on = (d1 < amount * 0.55) || (amount > 0.55 && d2 < (amount - 0.5) * 0.9);
+    } else {
+        // Diamond: rotated-square halftone, the classic print screen.
+        on = (abs(f.x) + abs(f.y)) < amount * 1.5;
     }
     return half4(half3(on ? q : ground), base.a);
 }

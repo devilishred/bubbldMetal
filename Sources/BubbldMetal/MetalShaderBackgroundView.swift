@@ -170,12 +170,23 @@ public struct MetalShaderBackgroundView: View {
                 case dot = 1
                 /// Plus / cross glyph on a white ground.
                 case plus = 2
+                /// Horizontal line screen — bar thickness tracks darkness
+                /// (newspaper / engraving look).
+                case lines = 3
+                /// 45° pen strokes, gaining the cross direction as cells
+                /// darken (pen-and-ink hatching).
+                case hatch = 4
+                /// Rotated-square halftone, the classic print screen.
+                case diamond = 5
 
                 public var displayName: String {
                     switch self {
-                    case .square: return "Square"
-                    case .dot:    return "Dot"
-                    case .plus:   return "Plus"
+                    case .square:  return "Square"
+                    case .dot:     return "Dot"
+                    case .plus:    return "Plus"
+                    case .lines:   return "Lines"
+                    case .hatch:   return "Hatch"
+                    case .diamond: return "Diamond"
                     }
                 }
             }
