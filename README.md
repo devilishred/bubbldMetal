@@ -6,37 +6,29 @@ https://github.com/user-attachments/assets/4c439c8e-588c-4f51-a9ed-4f55d1f3fb42
 
 # BubbldMetal
 
-> An animated, GPU-driven SwiftUI background powered by a stitchable Metal shader.
+> Animated, GPU-driven SwiftUI backgrounds — 17 hand-written `[[stitchable]]` Metal shaders behind a one-line view.
 
 ## Features
 
-- 🌊 Drop-in animated gradient with a ripple + value-noise Metal effect
-- 🪞 Five background styles — ripple, liquid metal, brushed metal, aurora, plasma
+- 🎨 17 background styles, each seeded with a tuned preset
+- 🌓 Optional halftone / ordered-dither pass over any style
 - ⚡️ Self-animating out of the box, or fully caller-driven
-- 🎨 Brand palette included (`.bpink` / `.bgreen` / `.bindigo`)
-- 📦 Zero asset-catalog dependency — the shaders ship inside the package bundle
+- 🎯 Deterministic `.phase()` rendering — preview, export and video frames agree exactly
+- ♿️ Honors Reduce Motion, and stops issuing GPU frames when backgrounded
+- 📦 Shaders ship inside the package bundle; no asset-catalog setup
 
 ## Requirements
 
-- iOS 18 / macOS 15 / tvOS 18 / visionOS 2
-- Xcode 16+ (builds on Apple platforms only — requires the Metal + SwiftUI SDK)
+iOS 18 · macOS 15 · tvOS 18 · visionOS 2 · Xcode 16+
 
-> **Note:** the shader is compiled by Xcode's build system. Build/test with Xcode or `xcodebuild` (the standard path when you add this to an app). The bare command-line `swift build` does not compile `.metal` sources, so CI must run on macOS with full Xcode selected.
+> Xcode's build system compiles the `.metal` sources. Build and test with Xcode or `xcodebuild`; bare `swift build` does not compile Metal, so CI needs macOS with full Xcode selected.
 
 ## Installation
 
-### Xcode
-
-**File ▸ Add Package Dependencies…** and enter:
-
-```
-https://github.com/bubbld/bubbldMetal
-```
-
-### Package.swift
+**File ▸ Add Package Dependencies…** with `https://github.com/devilishred/bubbldMetal`, or:
 
 ```swift
-.package(url: "https://github.com/bubbld/bubbldMetal", from: "1.0.0")
+.package(url: "https://github.com/devilishred/bubbldMetal", from: "1.0.0")
 ```
 
 …then add `"BubbldMetal"` to your target's dependencies.
@@ -47,132 +39,81 @@ https://github.com/bubbld/bubbldMetal
 import SwiftUI
 import BubbldMetal
 
-struct ContentView: View {
-    var body: some View {
-        MetalShaderBackgroundView()   // stock ripple, self-animating
-    }
-}
+MetalShaderBackgroundView()         // stock ripple, self-animating
+MetalShaderBackgroundView(.aurora)  // any style, with its tuned preset
 ```
 
-## Customization
-
-Pick a style in the initializer, then chain SwiftUI-style modifiers — one per knob. Each initializer seeds that style's tuned preset, so you only override what you want:
+Chain modifiers to override individual knobs. Each returns a new view, so order doesn't matter and any subset works:
 
 ```swift
-MetalShaderBackgroundView(.aurora)
-    .color1(.bpink)
+MetalShaderBackgroundView(.marble)
+    .colors(.bpink, .bindigo, .black, .bgreen)
+    .noise(12)
     .orbitSpeed(0.02)
-    .displacementStrength(0.4)
 ```
 
-Every modifier returns a new `MetalShaderBackgroundView`, so order doesn't matter and any subset works.
+## Styles
 
-### Modifiers
+| Style | Look | Knobs |
+|---|---|---|
+| `.ripple` | Ripple + value-noise displacement | `noise`, `strength`, `rippleFrequency`, `rippleSpeed`, `displacementStrength` |
+| `.liquidMetal` | Churning chrome/mercury — domain-warped fbm with a specular crest | `noise`, `strength`, `displacementStrength`, `sheen`, `rippleSpeed` |
+| `.aurora` | Soft drifting bands of light | `noise`, `strength`, `rippleFrequency`, `displacementStrength`, `rippleSpeed` |
+| `.plasma` | Oil-slick plasma — interfering sines with thin-film iridescence | `noise`, `strength`, `rippleFrequency`, `displacementStrength`, `sheen` |
+| `.clouds` | Drifting fractal clouds through the palette | `noise`, `strength`, `rippleSpeed` |
+| `.smoke` | Wispy ink tendrils, `color1` over `color2` | `noise`, `strength`, `rippleSpeed` |
+| `.chrome` | Liquid chrome — fbm as a height field, lit with a faked metallic reflection | `noise`, `strength`, `rippleSpeed` |
+| `.grain` | Grainy gradient — soft palette blobs under shimmering film grain | `noise`, `strength`, `rippleSpeed` |
+| `.silk` | Draped satin ribbons with a sweeping specular sheen | `noise`, `strength`, `rippleSpeed` |
+| `.blobs` | Lava-lamp metaballs on incommensurate orbits | `noise`, `strength`, `rippleSpeed` |
+| `.bokeh` | Drifting soft-focus light discs, twinkling | `noise`, `strength`, `rippleSpeed` |
+| `.holoFoil` | Diagonal rainbow sheen over a diamond micro-pattern, with sparkle glints | `noise`, `strength`, `rippleSpeed` |
+| `.marble` | Ink-marbling veins — a folded sine over a two-level domain warp | `noise`, `strength`, `rippleSpeed` |
+| `.caustics` | Underwater light webs from counter-scrolling Voronoi | `noise`, `strength`, `rippleSpeed` |
+| `.stainedGlass` | Hard-edged Voronoi panes with dark leading, slowly morphing | `noise`, `strength`, `rippleSpeed` |
+| `.nebula` | Deep-space clouds with a sparse twinkling starfield | `noise`, `strength`, `rippleSpeed` |
+| `.topo` | Animated contour lines over a soft elevation tint | `noise`, `strength`, `rippleSpeed` |
 
-| Modifier                     | Type              | Description                                    |
-|------------------------------|-------------------|------------------------------------------------|
-| `.style(_:)`                 | `BackgroundStyle` | Switch shader style, keeping other knobs       |
-| `.color1(_:)` … `.color4(_:)`| `Color`           | Individual gradient stops                      |
-| `.colors(_:_:_:_:)`          | `Color × 4`       | Set all four gradient colors at once           |
-| `.noise(_:)`                 | `Float`           | Value-noise scale (finer grain when higher)    |
-| `.strength(_:)`              | `Float`           | How strongly noise perturbs the effect         |
-| `.rippleFrequency(_:)`       | `Float`           | Number of wavefronts (tighter when higher)     |
-| `.rippleSpeed(_:)`           | `Float`           | Ripple animation speed (`.ripple` only)        |
-| `.displacementStrength(_:)`  | `Float`           | How much the shader warps the image            |
-| `.sheen(_:)`                 | `Float`           | Metallic/iridescent highlight (metal & plasma) |
-| `.topColorMix(_:)`           | `Double`          | Blend of `color4` into `color1` at the top     |
-| `.startPoint(_:)`            | `UnitPoint`       | Gradient start                                 |
-| `.endPoint(_:)`              | `UnitPoint`       | Gradient end                                   |
-| `.orbitRadius(_:)`           | `Double`          | Radius of the orbiting effect center           |
-| `.orbitSpeed(_:)`            | `Double`          | Orbit angular step per frame                   |
-| `.scale(_:)`                 | `CGFloat`         | Layer scale (keeps displaced edges covered)    |
-| `.maxSampleOffset(_:)`       | `CGSize`          | Max offset the layer effect may sample         |
-| `.dither(cell:levels:mark:)` | see below         | Halftone / ordered-dither overlay (any style)  |
-| `.configuration(_:)`         | `Configuration`   | Replace the whole configuration in one shot    |
-| `.time(_:)` / `.timer(_:)`   | see below         | Caller-driven animation                        |
+`.ripple`, `.liquidMetal`, `.aurora` and `.plasma` are `.layerEffect` shaders — they displace and re-light the gradient underneath, so `gradientKind` / `startPoint` / `endPoint` shape the result. The other thirteen are self-generating `.colorEffect` shaders: they synthesize color from noise and the palette, ignoring the gradient geometry.
 
-### Background styles
+For the thirteen `.colorEffect` styles, `noise` reads as scale or density, `strength` as warp or distortion, and `rippleSpeed` as drift rate; all of them take the four palette colors. `.plasma` has no speed knob.
 
-Choose a shader in the initializer. Every style renders over the same gradient and responds to the modifiers that map to it:
+## Modifiers
+
+| Group | Modifiers |
+|---|---|
+| Color | `.color1(_:)` … `.color4(_:)`, `.colors(_:_:_:_:)`, `.topColorMix(_:)` |
+| Gradient | `.gradientKind(_:)` — `.linear` / `.radial` / `.angular` — `.startPoint(_:)`, `.endPoint(_:)` |
+| Pattern | `.noise(_:)` detail, `.strength(_:)` warp, `.rippleFrequency(_:)`, `.displacementStrength(_:)`, `.sheen(_:)` |
+| Motion | `.rippleSpeed(_:)`, `.orbitRadius(_:)`, `.orbitSpeed(_:)`, `.time(_:)`, `.timer(_:)`, `.phase(_:referenceWidth:)` |
+| Sampling | `.scale(_:)`, `.maxSampleOffset(_:)` |
+| Post | `.dither(cell:levels:mark:)`, `.noDither()` |
+| Wholesale | `.style(_:)`, `.configuration(_:)` |
+
+Presets are available through `.configuration(_:)` — `.default`, `.calm`, `.intense`, plus one per style.
+
+## Dither
 
 ```swift
-MetalShaderBackgroundView(.liquidMetal)
+MetalShaderBackgroundView(.clouds).dither(cell: 10, levels: 3, mark: .dot)
 ```
 
-| Style           | Look                                                    | Knobs used                                             |
-|-----------------|--------------------------------------------------------|--------------------------------------------------------|
-| `.ripple`       | Original ripple + value-noise displacement (`fbp`)     | `noise`, `strength`, `rippleFrequency`, `rippleSpeed`, `displacementStrength` |
-| `.liquidMetal`  | Churning chrome/mercury (domain-warped fbm + specular) | `noise`, `strength`, `displacementStrength`, `sheen`   |
-| `.aurora`       | Soft drifting bands of light                           | `noise`, `strength`, `rippleFrequency`, `displacementStrength` |
-| `.plasma`       | Oil-slick iridescent plasma                            | `noise`, `strength`, `rippleFrequency`, `displacementStrength`, `sheen` |
-| `.clouds`       | Drifting fractal clouds through a 4-color palette      | `noise` (frequency), `strength` (warp), `rippleSpeed`, `color1`–`color4` |
-| `.smoke`        | Wispy ink tendrils (`color1` ink over `color2`)        | `noise` (frequency), `strength` (warp), `rippleSpeed`, `color1`, `color2` |
-| `.chrome`       | Warped-fbm liquid-metal reflection, tinted by `color1` | `noise` (frequency), `strength` (warp), `rippleSpeed`, `color1` |
+Pixelates the field into `cell`-point cells, quantizes each to `levels` steps per channel with a 4×4 Bayer matrix, and draws every cell as `mark` — `.square`, `.dot`, `.plus`, `.lines`, `.hatch` or `.diamond`. One Bayer lookup and a quantize per pixel, so it's lighter than the noise styles, and it inherits the underlying animation for free.
 
-> `.clouds`, `.smoke`, and `.chrome` are self-generating `.colorEffect` styles: they synthesize color from noise and a palette rather than displacing the gradient, so their look is driven by the colors you pass, not `startPoint`/`endPoint`.
+## Deterministic frames
 
-### Dither / halftone overlay
-
-`.dither(...)` layers a retro halftone / ordered-dither pass **on top of any style** (or a plain gradient): it pixelates the field into cells, quantizes each to `levels` steps per channel with a 4×4 Bayer matrix, and draws each cell with the chosen `mark`. It's a cheap post-process (a Bayer lookup + quantize per pixel), so it's lighter than the noise styles — and it inherits the underlying animation for free.
+`.phase(_:)` renders a single frame from the phase and the render size with the internal clock disabled, so the same phase yields the same frame at any resolution — a small live preview and a full-resolution `ImageRenderer` capture coincide exactly. Advance the phase yourself to animate, or drive the live clock with `.time(_:)` and `.timer(_:)`.
 
 ```swift
-MetalShaderBackgroundView(.clouds)
-    .colors(.orange, .pink, .yellow, .white)
-    .dither(cell: 10, levels: 3)              // flat cells, dithered transitions
-```
-
-| Parameter | Default    | Description                                              |
-|-----------|------------|---------------------------------------------------------|
-| `cell`    | `8`        | Grid cell size in points — dot size / resolution        |
-| `levels`  | `4`        | Quantization steps per channel (lower = more posterized)|
-| `mark`    | `.square`  | Cell glyph: `.square`, `.dot` (halftone), or `.plus`    |
-
-`.dot` and `.plus` draw the quantized color as a glyph on a white ground, sized by cell darkness. Call `.noDither()` to remove it.
-
-The defaults behind the modifiers (the same fields exposed on the underlying `Configuration` value type, if you'd rather build one and pass it to `.configuration(_:)`):
-
-| Field                  | Default              |     | Field                  | Default              |
-|------------------------|----------------------|-----|------------------------|----------------------|
-| `noise`                | `15.25`              |     | `topColorMix`          | `0.8`                |
-| `strength`             | `15.0`               |     | `startPoint`           | `.top`               |
-| `rippleFrequency`      | `16.0`               |     | `endPoint`             | `.bottomTrailing`    |
-| `rippleSpeed`          | `3.0`                |     | `orbitRadius`          | `300`                |
-| `displacementStrength` | `0.3`                |     | `orbitSpeed`           | `0.001`              |
-| `sheen`                | `0.5`                |     | `scale`                | `1.1`                |
-|                        |                      |     | `maxSampleOffset`      | `300 × 500`          |
-
-> Each style's initializer seeds a *tuned* preset (not the bare defaults above), so `MetalShaderBackgroundView(.plasma)` already looks good before you touch a modifier.
-
-### Presets
-
-The stock ripple presets are still available via `.configuration(_:)`:
-
-```swift
-MetalShaderBackgroundView().configuration(.default)   // the stock ripple look
-MetalShaderBackgroundView().configuration(.calm)      // slow, soft, subtle
-MetalShaderBackgroundView().configuration(.intense)   // fast, tight, bold
-```
-
-### Interactive playground
-
-Open the package in Xcode and run the **"Liquid Glass Playground"** preview in `MetalShaderBackgroundView.swift` to live-tune every knob (and the four colors) with sliders on a Liquid Glass panel. The playground requires iOS 26 / macOS 26; the component itself does not.
-
-### Full control
-
-Drive the animation clock yourself with `.time(_:)` and `.timer(_:)`:
-
-```swift
-MetalShaderBackgroundView(.ripple)
-    .rippleSpeed(4)
-    .time(myTime)
-    .timer(Timer.publish(every: 1 / 60, on: .main, in: .common).autoconnect())
+MetalShaderBackgroundView(.marble).phase(0.25)
 ```
 
 ## How it works
 
-The view renders a `LinearGradient` and applies a SwiftUI [`.layerEffect`](https://developer.apple.com/documentation/swiftui/view/layereffect(_:maxsampleoffset:isenabled:)) backed by a `[[stitchable]]` Metal function chosen by the current style (`fbp` for `.ripple`, plus `liquidMetal` / `brushedMetal` / `aurora` / `plasma`). The shaders are compiled by Xcode into the package's `default.metallib` and resolved at runtime via `ShaderLibrary.bundle(Bundle.module)`.
+The view renders a gradient and applies a SwiftUI [`.layerEffect`](https://developer.apple.com/documentation/swiftui/view/layereffect(_:maxsampleoffset:isenabled:)) or `.colorEffect` backed by the `[[stitchable]]` Metal function for the current style. Xcode compiles the shaders into the package's `default.metallib`, resolved at runtime via `ShaderLibrary.bundle(Bundle.module)`.
+
+Open the package in Xcode and run the **Liquid Glass Playground** preview in `MetalShaderBackgroundView.swift` to live-tune every knob with sliders (requires iOS 26 / macOS 26; the component itself does not).
 
 ## License
 
-MIT 
-
+MIT
